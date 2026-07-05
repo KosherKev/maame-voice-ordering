@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.moolrePaymentWebhookSchema = exports.retryPaymentParamsSchema = void 0;
+exports.getFulfillmentsParamsSchema = exports.markDeliveredParamsSchema = exports.moolrePaymentWebhookSchema = exports.retryPaymentParamsSchema = void 0;
 const zod_1 = require("zod");
 exports.retryPaymentParamsSchema = zod_1.z.object({
     orderId: zod_1.z.string().uuid({ message: 'Order ID must be a valid UUID' }),
@@ -16,4 +16,10 @@ exports.moolrePaymentWebhookSchema = zod_1.z.object({
         fee: zod_1.z.string().optional(),
         networkfee: zod_1.z.string().optional(),
     }),
+});
+exports.markDeliveredParamsSchema = zod_1.z.object({
+    fulfillmentId: zod_1.z.string().uuid({ message: 'Fulfillment ID must be a valid UUID' }),
+});
+exports.getFulfillmentsParamsSchema = zod_1.z.object({
+    orderId: zod_1.z.string().uuid({ message: 'Order ID must be a valid UUID' }),
 });

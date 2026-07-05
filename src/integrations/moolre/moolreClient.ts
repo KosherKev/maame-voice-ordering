@@ -127,4 +127,196 @@ export class MoolreClient {
       throw new UpstreamProviderError(`Failed to initiate payment via Moolre: ${errMsg}`);
     }
   }
+
+  async sendSms(recipient: string, message: string): Promise<void> {
+    const url = `${this.baseUrl}/open/sms/send?type=1&senderid=Maame&recipient=${encodeURIComponent(recipient)}&message=${encodeURIComponent(message)}`;
+
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'X-API-VASKEY': env.MOOLRE_VASKEY,
+        },
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+
+      interface MoolreSmsResponse {
+        status: number | string;
+        message?: string;
+      }
+      const responseBody = (await response.json()) as MoolreSmsResponse;
+
+      if (Number(responseBody.status) !== 1) {
+        throw new Error(responseBody.message || 'Moolre SMS send request was not successful');
+      }
+    } catch (err) {
+      console.error('Moolre sendSms error:', err);
+      const errMsg = err instanceof Error ? err.message : String(err);
+      throw new UpstreamProviderError(`Failed to send SMS via Moolre: ${errMsg}`);
+    }
+  }
+
+  async initiateTransfer(params: {
+    amountInPesewas: number;
+    vendorPhone: string;
+    momoChannel: 'mtn' | 'telecel' | 'at';
+    externalRef: string;
+  }): Promise<{ moolreTransactionId: string }> {
+    const { amountInPesewas, vendorPhone, momoChannel, externalRef } = params;
+    const amountStr = (amountInPesewas / 100).toFixed(2);
+
+    let channel = '1'; // MTN
+    if (momoChannel === 'telecel') {
+      channel = '6';
+    } else if (momoChannel === 'at') {
+      channel = '7';
+    }
+
+    const accountNumber = this.getAccountNumber();
+
+    const requestBody = {
+      type: 1,
+      channel,
+      currency: 'GHS',
+      receiver: vendorPhone,
+      amount: amountStr,
+      externalref: externalRef,
+      accountnumber: accountNumber,
+      reference: `Maame payout ${externalRef}`,
+    };
+
+    try {
+      const response = await fetch(`${this.baseUrl}/open/transact/transfer`, {
+        method: 'POST',
+        headers: this.headers,
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+
+      interface MoolreTransferResponse {
+        status: number | string;
+        message?: string;
+        data?: string;
+      }
+      const responseBody = (await response.json()) as MoolreTransferResponse;
+
+      if (Number(responseBody.status) !== 1) {
+        throw new Error(responseBody.message || 'Moolre transfer request was not successful');
+      }
+
+      const moolreTransactionId = responseBody.data;
+      if (!moolreTransactionId) {
+        throw new Error('Moolre response missing transaction ID in data');
+      }
+
+      return { moolreTransactionId };
+    } catch (err) {
+      console.error('Moolre initiateTransfer error:', err);
+      const errMsg = err instanceof Error ? err.message : String(err);
+      throw new UpstreamProviderError(`Failed to initiate transfer via Moolre: ${errMsg}`);
+    }
+  }
+
+  async getTransactionStatus(externalRef: string): Promise<{
+    status: 'success' | 'failed' | 'pending';
+    moolreTransactionId?: string;
+    fee?: number;
+  }> {
+    const requestBody = {
+      idtype: 1,
+      id: externalRef,
+    };
+
+    interface MoolreStatusData {
+      status?: string | number;
+      transactionstatus?: string;
+      transactionid?: string;
+      transactionId?: string;
+      fee?: string | number;
+      networkfee?: string | number;
+    }
+
+    interface MoolreStatusResponseBody {
+      status: number | string;
+      code: string;
+      message?: string;
+      data?: MoolreStatusData;
+      transactionid?: string;
+    }
+
+    try {
+      const response = await fetch(`${this.baseUrl}/open/transact/status`, {
+        method: 'POST',
+        headers: this.headers,
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+
+      const responseBody = (await response.json()) as MoolreStatusResponseBody;
+      console.log(`Moolre status check response for ${externalRef}:`, JSON.stringify(responseBody));
+
+      const rootStatus = Number(responseBody.status);
+      const code = responseBody.code;
+      const data = responseBody.data;
+
+      if (rootStatus === 1) {
+        const isCompleted =
+          code === 'P01' ||
+          code === 'T01' ||
+          code === 'SMS01' ||
+          (data && (
+            data.status === 'success' ||
+            data.status === 'completed' ||
+            data.status === 1 ||
+            data.status === '1' ||
+            data.transactionstatus === 'success' ||
+            data.transactionstatus === 'completed'
+          ));
+
+        const isFailed =
+          code === 'failed' ||
+          code === 'P02' ||
+          code === 'T02' ||
+          (data && (
+            data.status === 'failed' ||
+            data.status === 0 ||
+            data.status === '0' ||
+            data.transactionstatus === 'failed'
+          ));
+
+        if (isCompleted) {
+          const feeStr = data?.fee || data?.networkfee;
+          const fee = feeStr ? Math.round(parseFloat(String(feeStr)) * 100) : undefined;
+          return {
+            status: 'success',
+            moolreTransactionId: data?.transactionid || data?.transactionId || responseBody.transactionid,
+            fee,
+          };
+        } else if (isFailed) {
+          return { status: 'failed' };
+        }
+      }
+
+      if (rootStatus === 0 || code === 'AIN01' || code === 'ERR01') {
+        return { status: 'failed' };
+      }
+
+      return { status: 'pending' };
+    } catch (err) {
+      console.error('Moolre getTransactionStatus error:', err);
+      throw err;
+    }
+  }
 }

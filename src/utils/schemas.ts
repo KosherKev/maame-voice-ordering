@@ -16,3 +16,11 @@ export const moolrePaymentWebhookSchema = z.object({
     networkfee: z.string().optional(),
   }),
 });
+
+export const markDeliveredParamsSchema = z.object({
+  fulfillmentId: z.string().uuid({ message: 'Fulfillment ID must be a valid UUID' }),
+});
+
+export const getFulfillmentsParamsSchema = z.object({
+  orderId: z.string().uuid({ message: 'Order ID must be a valid UUID' }),
+});

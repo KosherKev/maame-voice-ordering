@@ -1,6 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { OrdersController } from '../controllers/ordersController.js';
 import { WebhookController } from '../controllers/webhookController.js';
+import { fulfillmentsController } from '../controllers/fulfillmentsController.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { idempotencyMiddleware } from '../middleware/idempotency.js';
 import { env } from '../config/env.js';
@@ -28,6 +29,13 @@ router.post(
   authMiddleware,
   idempotencyMiddleware,
   ordersController.retryPayment
+);
+
+// Get Fulfillments for Order endpoint
+router.get(
+  '/orders/:orderId/fulfillments',
+  authMiddleware,
+  fulfillmentsController.getFulfillmentsForOrder
 );
 
 // Webhook endpoint for Moolre payment callbacks - requires query parameter key check

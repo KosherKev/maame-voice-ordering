@@ -4,6 +4,7 @@ exports.WebhookController = void 0;
 const prisma_js_1 = require("../db/prisma.js");
 const webhookLogger_js_1 = require("../utils/webhookLogger.js");
 const schemas_js_1 = require("../utils/schemas.js");
+const fulfillmentService_js_1 = require("../services/fulfillmentService.js");
 class WebhookController {
     async handleMoolrePayment(req, res, next) {
         try {
@@ -40,6 +41,12 @@ class WebhookController {
                     },
                 }),
             ]);
+            // If payment is successful, trigger vendor notification & fulfillment creation
+            if (isSuccess) {
+                fulfillmentService_js_1.fulfillmentService.processOrderPaid(payment.orderId).catch((err) => {
+                    console.error(`❌ Failed to process paid order ${payment.orderId} fulfillment:`, err);
+                });
+            }
             res.status(200).send();
         }
         catch (err) {

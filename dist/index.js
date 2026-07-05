@@ -4,6 +4,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const env_js_1 = require("./config/env.js");
 const app_js_1 = require("./app.js");
 const sessionSweep_js_1 = require("./jobs/sessionSweep.js");
+const disbursementPoll_js_1 = require("./jobs/disbursementPoll.js");
 const port = env_js_1.env.PORT;
 app_js_1.app.listen(port, () => {
     console.log(`🚀 Maame API server booted and listening on port ${port} in ${env_js_1.env.NODE_ENV} mode`);
@@ -20,4 +21,14 @@ app_js_1.app.listen(port, () => {
             console.error('Failed to run session sweep interval:', err);
         }
     }, SWEEP_INTERVAL_MS);
+    // Start the background job for polling pending disbursements/transfers status (G-3)
+    const DISBURSEMENT_POLL_INTERVAL_MS = 30000; // 30 seconds
+    setInterval(async () => {
+        try {
+            await (0, disbursementPoll_js_1.runDisbursementPoll)();
+        }
+        catch (err) {
+            console.error('Failed to run disbursement status polling interval:', err);
+        }
+    }, DISBURSEMENT_POLL_INTERVAL_MS);
 });

@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../db/prisma.js';
 import { logWebhookEvent } from '../utils/webhookLogger.js';
 import { moolrePaymentWebhookSchema } from '../utils/schemas.js';
+import { fulfillmentService } from '../services/fulfillmentService.js';
 
 export class WebhookController {
   async handleMoolrePayment(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -45,6 +46,13 @@ export class WebhookController {
           },
         }),
       ]);
+
+      // If payment is successful, trigger vendor notification & fulfillment creation
+      if (isSuccess) {
+        fulfillmentService.processOrderPaid(payment.orderId).catch((err) => {
+          console.error(`❌ Failed to process paid order ${payment.orderId} fulfillment:`, err);
+        });
+      }
 
       res.status(200).send();
     } catch (err) {
