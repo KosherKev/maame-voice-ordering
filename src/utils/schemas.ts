@@ -1,5 +1,36 @@
 import { z } from 'zod';
 
+/**
+ * G-7 FLAG: Moolre USSD inbound webhook shape.
+ * The public Moolre reference is minimal for the USSD inbound hook. The fields
+ * below are derived from the Moolre API reference (llms-full.txt) and common
+ * USSD session-protocol conventions (sessionid, msisdn, text, type).
+ * MUST be verified against a live Moolre sandbox before Phase 7 goes to
+ * production — do not treat field names as confirmed. Update this schema
+ * and ussdService.ts if the live shape differs.
+ */
+export const moolreUssdInboundSchema = z.object({
+  /** Moolre session identifier — correlates multi-turn USSD dialog */
+  sessionid: z.string().min(1, { message: 'sessionid is required' }),
+  /** Customer MSISDN (phone number) */
+  msisdn: z.string().min(1, { message: 'msisdn (customer phone) is required' }),
+  /** The accumulated USSD input string for this session (e.g. "1*2*3") */
+  text: z.string().default(''),
+  /** Session lifecycle indicator: 1 = new/continuing, 2 = end (session terminated by network) */
+  type: z.coerce.number().int().optional(),
+  /** Service code dialled by the customer (e.g. *203#) */
+  serviceCode: z.string().optional(),
+});
+
+export type MoolreUssdInboundPayload = z.infer<typeof moolreUssdInboundSchema>;
+
+export const getUssdSessionsQuerySchema = z.object({
+  limit: z.coerce.number().min(1).max(100).default(20),
+  cursor: z.string().optional(),
+  phone: z.string().optional(),
+  since: z.string().datetime({ message: 'since must be a valid ISO 8601 datetime' }).optional(),
+});
+
 export const retryPaymentParamsSchema = z.object({
   orderId: z.string().uuid({ message: 'Order ID must be a valid UUID' }),
 });

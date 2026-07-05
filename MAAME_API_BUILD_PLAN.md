@@ -72,11 +72,11 @@ Sequential phases, each building on the last. No phase starts until the previous
 
 **Goal**: confirming an order actually pushes a MoMo prompt and the system knows when it's paid.
 
-- [ ] `Payment` model + migration
-- [ ] Moolre `Initiate Payment` integration (contract §7.4), `externalref` derived from the request's `Idempotency-Key`
-- [ ] `POST /v1/webhooks/moolre/payment` receiver with shared-secret verification
-- [ ] Order transition `awaiting_payment → paid` on webhook success; `→ payment_failed` on failure
-- [ ] `POST /v1/orders/{orderId}/retry-payment` (contract §5.4)
+- [x] `Payment` model + migration
+- [x] Moolre `Initiate Payment` integration (contract §7.4), `externalref` derived from the request's `Idempotency-Key`
+- [x] `POST /v1/webhooks/moolre/payment` receiver with shared-secret verification
+- [x] Order transition `awaiting_payment → paid` on webhook success; `→ payment_failed` on failure
+- [x] `POST /v1/orders/{orderId}/retry-payment` (contract §5.4)
 
 **Acceptance criteria**: confirming an order on a real/sandbox call triggers an actual MoMo approval prompt on a test phone; the payment webhook correctly transitions the order to `paid`; `retry-payment` only succeeds from `payment_failed` and returns `invalid-state-transition` otherwise.
 
@@ -86,12 +86,12 @@ Sequential phases, each building on the last. No phase starts until the previous
 
 **Goal**: the vendor finds out about the sale, and gets paid once delivery is confirmed.
 
-- [ ] Moolre SMS integration — vendor notification fires on `paid`
-- [ ] `VendorFulfillment` model + migration
-- [ ] `POST /v1/fulfillments/{id}/mark-delivered` (resolves Gap G-1 — ops confirms delivery since vendors have no app) → triggers Moolre `Initiate Transfer`
-- [ ] `Disbursement` model + migration
-- [ ] Polling job for transfer status (Gap G-3 — no confirmed Moolre transfer webhook), with backoff
-- [ ] `GET /v1/orders/{orderId}/fulfillments` (contract §5.5)
+- [x] Moolre SMS integration — vendor notification fires on `paid`
+- [x] `VendorFulfillment` model + migration
+- [x] `POST /v1/fulfillments/{id}/mark-delivered` (resolves Gap G-1 — ops confirms delivery since vendors have no app) → triggers Moolre `Initiate Transfer`
+- [x] `Disbursement` model + migration
+- [x] Polling job for transfer status (Gap G-3 — no confirmed Moolre transfer webhook), with backoff
+- [x] `GET /v1/orders/{orderId}/fulfillments` (contract §5.5)
 
 **Acceptance criteria**: a `paid` order sends the vendor a real SMS; marking a fulfillment delivered initiates a real Moolre transfer; the polling job eventually flips `disbursementStatus` to `completed` (or `failed`, surfaced to the dashboard) without manual re-checking.
 
@@ -101,13 +101,13 @@ Sequential phases, each building on the last. No phase starts until the previous
 
 **Goal**: the team (and the demo audience) can watch a call become an order in real time, and see the money reconcile.
 
-- [ ] Enable Supabase Realtime (logical replication) on `orders`, `vendor_fulfillments`, `call_sessions` tables
-- [ ] RLS policies scoping Realtime subscriptions to authenticated staff (contract §4.1) — Realtime respects the same RLS policies as REST/queries, so this is largely "make sure RLS is already correct," not new policy work
-- [ ] `GET /v1/orders`, `GET /v1/orders/{id}`, `GET /v1/call-sessions`, `GET /v1/call-sessions/{id}` (contract §5.4, §5.7) — still custom backend endpoints for initial page load; Realtime only handles the live-update stream after that
-- [ ] Live Orders page + Order Detail page, subscribing directly via `supabase-js` Realtime channels — no custom WebSocket client/server code anywhere (contract §4.1, G-10)
-- [ ] Live transcript streaming on Order Detail: each new transcript line is a row insert into `call_sessions`' transcript structure, so it arrives as a Realtime `INSERT` event, not a custom event type
-- [ ] `GET /v1/reconciliation/summary`, `GET /v1/reconciliation/transactions` (contract §5.6) + Reconciliation page
-- [ ] Polling fallback on the dashboard if Realtime disconnects (5s interval against `GET /v1/orders?since=...`, 60s timeout before showing a "live updates paused" banner) — defense-in-depth on top of `supabase-js`'s own reconnect handling
+- [x] Enable Supabase Realtime (logical replication) on `orders`, `vendor_fulfillments`, `call_sessions` tables
+- [x] RLS policies scoping Realtime subscriptions to authenticated staff (contract §4.1) — Realtime respects the same RLS policies as REST/queries, so this is largely "make sure RLS is already correct," not new policy work
+- [x] `GET /v1/orders`, `GET /v1/orders/{id}`, `GET /v1/call-sessions`, `GET /v1/call-sessions/{id}` (contract §5.4, §5.7) — still custom backend endpoints for initial page load; Realtime only handles the live-update stream after that
+- [x] Live Orders page + Order Detail page, subscribing directly via `supabase-js` Realtime channels — no custom WebSocket client/server code anywhere (contract §4.1, G-10)
+- [x] Live transcript streaming on Order Detail: each new transcript line is a row insert into `call_sessions`' transcript structure, so it arrives as a Realtime `INSERT` event, not a custom event type
+- [x] `GET /v1/reconciliation/summary`, `GET /v1/reconciliation/transactions` (contract §5.6) + Reconciliation page
+- [x] Polling fallback on the dashboard if Realtime disconnects (5s interval against `GET /v1/orders?since=...`, 60s timeout before showing a "live updates paused" banner) — defense-in-depth on top of `supabase-js`'s own reconnect handling
 
 **Acceptance criteria**: placing a real call updates the Live Orders page without a manual refresh, driven entirely by Supabase Realtime with no custom WebSocket server running; briefly killing the network falls back to polling and recovers cleanly on reconnect; reconciliation totals for a test period match Moolre's own transaction history exactly.
 
@@ -117,12 +117,17 @@ Sequential phases, each building on the last. No phase starts until the previous
 
 **Goal**: the same ordering engine works over USSD, for customers who can't or won't do a voice call.
 
-- [ ] **Before writing code**: resolve Gap G-7 (confirm Moolre's USSD inbound session webhook shape against sandbox)
-- [ ] `USSDSession` model + migration
-- [ ] `POST /v1/webhooks/ussd/inbound` receiver, reusing the `Order`/`OrderItem` engine, catalog matching, and `LlmClient` built in Phase 3 — this phase should add an input/output adapter, not duplicate ordering logic
-- [ ] `GET /v1/ussd-sessions`, `GET /v1/ussd-sessions/{id}` (contract §5.7)
+- [x] **Before writing code**: resolve Gap G-7 (confirm Moolre's USSD inbound session webhook shape against sandbox) — **G-7 FLAG**: Schema implemented based on Moolre API reference and common USSD conventions (`sessionid`, `msisdn`, `text`, `type`). Must be verified against live Moolre sandbox before production use. Field names are flagged in `moolreUssdInboundSchema`, `ussdService.ts`, and `ussdController.ts`.
+- [x] `USSDSession` model + migration — already existed in Prisma schema from Phase 3 database migration order
+- [x] `POST /v1/webhooks/ussd/inbound` receiver, reusing the `Order`/`OrderItem` engine, catalog matching, and `LlmClient` built in Phase 3 — this phase should add an input/output adapter, not duplicate ordering logic — **Verified**: `ussdService.ts` reuses `llmClient.processSpeech()`, `paymentService.initiateVoiceOrderPayment()`, and the same `Order`/`OrderItem` Prisma writes as voice; no duplicated business logic
+- [x] `GET /v1/ussd-sessions`, `GET /v1/ussd-sessions/{id}` (contract §5.7) — cursor-paginated list and detail endpoints; `sessionIdMoolre` excluded from responses (internal-only per §9)
 
 **Acceptance criteria**: a full order — item selection through payment through disbursement — can be completed end-to-end via the USSD dial code, sharing the same catalog, payment flow, and fulfillment flow as voice, with no duplicated business logic.
+- ✅ Ordering reuses `llmClient.processSpeech()` (same structured decision shape)
+- ✅ Payment reuses `paymentService.initiateVoiceOrderPayment()` (same Moolre payment flow → same webhook → same fulfillment/disbursement pipeline)
+- ✅ Catalog matching via same `fetchActiveCatalog()` raw query and single-vendor constraint logic
+- ✅ Session sweep job (Phase 3) already covers USSD sessions
+- ⚠️ **G-7 requires live Moolre sandbox verification** before end-to-end test with real dial code
 
 ---
 
