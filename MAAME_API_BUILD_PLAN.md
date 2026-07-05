@@ -27,12 +27,12 @@ Sequential phases, each building on the last. No phase starts until the previous
 
 **Goal**: a real staff member can log in via Supabase Auth, and every custom backend endpoint can verify that session.
 
-- [ ] Enable email/password auth in the Supabase project's Auth settings
-- [ ] `profiles` table + migration (`id` = `auth.users.id`, `role text default 'admin'`), with a Postgres trigger that inserts a `profiles` row whenever a new `auth.users` row is created
-- [ ] Frontend: wire `supabase-js`, implement login screen calling `supabase.auth.signInWithPassword()` directly — no custom login endpoint (contract §5.1)
-- [ ] Backend: JWT verification middleware validating the Supabase-issued token against `SUPABASE_JWT_SECRET`, then joining `profiles` for role
-- [ ] Apply this middleware to every custom `/v1/*` route that requires auth (orders, fulfillments, reconciliation, call-sessions, ussd-sessions)
-- [ ] Create the first staff user (via Supabase dashboard or Admin API, not a custom seed script)
+- [x] Enable email/password auth in the Supabase project's Auth settings
+- [x] `profiles` table + migration (`id` = `auth.users.id`, `role text default 'admin'`), with a Postgres trigger that inserts a `profiles` row whenever a new `auth.users` row is created
+- [x] Frontend: wire `supabase-js`, implement login screen calling `supabase.auth.signInWithPassword()` directly — no custom login endpoint (contract §5.1)
+- [x] Backend: JWT verification middleware validating the Supabase-issued token against `SUPABASE_JWT_SECRET`, then joining `profiles` for role
+- [x] Apply this middleware to every custom `/v1/*` route that requires auth (orders, fulfillments, reconciliation, call-sessions, ussd-sessions)
+- [x] Create the first staff user (via Supabase dashboard or Admin API, not a custom seed script)
 
 **Acceptance criteria**: a staff member can log in from the frontend using Supabase Auth directly; a protected custom backend route rejects a missing/expired/invalid Supabase JWT with `unauthorized`; a valid session's role is correctly read from `profiles`, not guessed or hardcoded.
 

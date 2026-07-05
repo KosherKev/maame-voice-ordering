@@ -35,6 +35,7 @@ app.use('/v1', healthRouter);
 app.use('/v1', idempotencyRouter);
 
 
+
 // Catch-all for undefined routes
 app.use((req, res, next) => {
   next(new NotFoundError(`Route ${req.method} ${req.originalUrl} not found`));
