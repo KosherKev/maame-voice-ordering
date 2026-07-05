@@ -13,6 +13,8 @@ const idempotency_js_1 = require("./routes/idempotency.js");
 const voice_js_1 = require("./routes/voice.js");
 const orders_js_1 = require("./routes/orders.js");
 const fulfillments_js_1 = require("./routes/fulfillments.js");
+const sessions_js_1 = require("./routes/sessions.js");
+const reconciliation_js_1 = require("./routes/reconciliation.js");
 const index_js_1 = require("./errors/index.js");
 const app = (0, express_1.default)();
 exports.app = app;
@@ -40,6 +42,8 @@ app.use('/v1', idempotency_js_1.idempotencyRouter);
 app.use('/v1', voice_js_1.voiceRouter);
 app.use('/v1', orders_js_1.ordersRouter);
 app.use('/v1', fulfillments_js_1.fulfillmentsRouter);
+app.use('/v1', sessions_js_1.sessionsRouter);
+app.use('/v1', reconciliation_js_1.reconciliationRouter);
 // Catch-all for undefined routes
 app.use((req, res, next) => {
     next(new index_js_1.NotFoundError(`Route ${req.method} ${req.originalUrl} not found`));

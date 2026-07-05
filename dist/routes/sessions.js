@@ -1,0 +1,12 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.sessionsRouter = void 0;
+const express_1 = require("express");
+const sessionsController_js_1 = require("../controllers/sessionsController.js");
+const auth_js_1 = require("../middleware/auth.js");
+const router = (0, express_1.Router)();
+router.get('/call-sessions', auth_js_1.authMiddleware, sessionsController_js_1.sessionsController.getCallSessions);
+router.get('/call-sessions/:callSessionId', auth_js_1.authMiddleware, sessionsController_js_1.sessionsController.getCallSession);
+router.get('/ussd-sessions/:ussdSessionId', auth_js_1.authMiddleware, sessionsController_js_1.sessionsController.getUssdSession);
+exports.sessionsRouter = router;
+exports.default = exports.sessionsRouter;

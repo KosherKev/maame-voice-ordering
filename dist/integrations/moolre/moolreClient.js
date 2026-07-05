@@ -105,21 +105,13 @@ class MoolreClient {
         }
     }
     async sendSms(recipient, message) {
-        const requestBody = {
-            type: 1,
-            senderid: 'Maame',
-            recipient,
-            message,
-        };
+        const url = `${this.baseUrl}/open/sms/send?type=1&senderid=Maame&recipient=${encodeURIComponent(recipient)}&message=${encodeURIComponent(message)}`;
         try {
-            const response = await fetch(`${this.baseUrl}/open/sms/send`, {
-                method: 'POST',
+            const response = await fetch(url, {
+                method: 'GET',
                 headers: {
-                    'Content-Type': 'application/json',
-                    'X-API-USER': env_js_1.env.MOOLRE_API_USER,
                     'X-API-VASKEY': env_js_1.env.MOOLRE_VASKEY,
                 },
-                body: JSON.stringify(requestBody),
             });
             if (!response.ok) {
                 const errorText = await response.text();

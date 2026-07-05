@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { OrdersController } from '../controllers/ordersController.js';
+import { ordersController } from '../controllers/ordersController.js';
 import { WebhookController } from '../controllers/webhookController.js';
 import { fulfillmentsController } from '../controllers/fulfillmentsController.js';
 import { authMiddleware } from '../middleware/auth.js';
@@ -8,7 +8,6 @@ import { env } from '../config/env.js';
 import { WebhookSignatureInvalidError } from '../errors/index.js';
 
 const router = Router();
-const ordersController = new OrdersController();
 const webhookController = new WebhookController();
 
 /**
@@ -23,12 +22,24 @@ function verifyWebhookSecret(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
+// Order Query Routes
+router.get('/orders', authMiddleware, ordersController.getOrders);
+router.get('/orders/:orderId', authMiddleware, ordersController.getOrder);
+
 // Mutating Order payment retry endpoint - requires auth and idempotency check
 router.post(
   '/orders/:orderId/retry-payment',
   authMiddleware,
   idempotencyMiddleware,
   ordersController.retryPayment
+);
+
+// Mutating Order cancellation endpoint - requires auth and idempotency check
+router.post(
+  '/orders/:orderId/cancel',
+  authMiddleware,
+  idempotencyMiddleware,
+  ordersController.cancelOrder
 );
 
 // Get Fulfillments for Order endpoint

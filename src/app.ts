@@ -7,6 +7,8 @@ import { idempotencyRouter } from './routes/idempotency.js';
 import { voiceRouter } from './routes/voice.js';
 import { ordersRouter } from './routes/orders.js';
 import { fulfillmentsRouter } from './routes/fulfillments.js';
+import { sessionsRouter } from './routes/sessions.js';
+import { reconciliationRouter } from './routes/reconciliation.js';
 import { NotFoundError, ForbiddenError } from './errors/index.js';
 
 const app = express();
@@ -39,6 +41,8 @@ app.use('/v1', idempotencyRouter);
 app.use('/v1', voiceRouter);
 app.use('/v1', ordersRouter);
 app.use('/v1', fulfillmentsRouter);
+app.use('/v1', sessionsRouter);
+app.use('/v1', reconciliationRouter);
 
 
 
