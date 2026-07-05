@@ -6,7 +6,7 @@ Orchestrates a full review of a completed build phase, as @code-reviewer.
 
 1. **Locate the phase** — Open `MAAME_API_BUILD_PLAN.md`, find phase `<number>`, and list every file that was created or modified to complete its checklist items.
 2. **Check contract fidelity** — For every endpoint/event touched in this phase, diff the implementation against `MAAME_API_CONTRACT.md`: method, path, auth, idempotency, request/response field names and types, and every error response.
-3. **Check security** — Confirm per `.agents/agents.md` (@code-reviewer priority order, item 2): no secrets in code/logs, webhook shared-secret + IP allowlist present where relevant, JWT handling correct, money-movement endpoints are idempotent.
+3. **Check security** — Confirm per `.agents/agents.md` (@code-reviewer priority order, item 2): no secrets in code/logs (especially `SUPABASE_SERVICE_ROLE_KEY` never in frontend code), webhook shared-secret + IP allowlist present where relevant, Row Level Security enabled with a correct policy on any Supabase-direct table touched this phase, JWT verification correct (never custom-signed), money-movement endpoints are idempotent.
 4. **Check data integrity** — Foreign keys correct and match the migration order in `MAAME_API_BUILD_PLAN.md`'s Database Migration Order section; monetary fields are integer pesewas; timestamps ISO 8601 UTC.
 5. **Check error handling** — Every failure path in this phase returns a contract-documented RFC 9457 body.
 6. **Check TypeScript correctness** — No `any` escape hatches around contract-shaped data.

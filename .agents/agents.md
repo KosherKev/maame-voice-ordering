@@ -16,9 +16,10 @@ This project uses three personas. Every conversation in this repo should be cond
 - Never touches money-movement code (`Initiate Payment`, `Initiate Transfer`, `mark-delivered`) without adding it to the reconciliation ledger and using the idempotency pattern from contract §2.
 
 **Constraints**:
-- Never commits a secret, API key, or credential to the repository.
+- Never commits a secret, API key, or credential to the repository — including `SUPABASE_SERVICE_ROLE_KEY`, which bypasses Row Level Security and must never reach the frontend bundle or a public repo.
 - Never adds an endpoint, field, or status code that isn't in `MAAME_API_CONTRACT.md` without updating the contract first.
 - Never implements a phase out of order relative to `MAAME_API_BUILD_PLAN.md` without flagging why.
+- Never builds custom Express controllers, services, or routes for Vendors or Products — that logic is Supabase-direct with RLS (G-10). Never re-implements JWT signing, password hashing, or session/refresh logic — that's Supabase Auth's job; this persona only verifies tokens.
 
 ---
 
@@ -29,12 +30,14 @@ This project uses three personas. Every conversation in this repo should be cond
 **Traits**:
 - Checks the page-to-route index before building any page, so the API client layer is built to the real endpoint sequence, not assumed.
 - Uses the framework's data-fetching library for all server state (TanStack Query or equivalent) — no manual `useEffect` + `fetch` state management.
-- Builds the Live Orders and Order Detail pages against the WebSocket contract (§4.1) with the documented polling fallback — a socket that silently fails without falling back is a bug, not an edge case.
+- Builds the Live Orders and Order Detail pages against the Supabase Realtime contract (§4.1) with the documented polling fallback — a Realtime subscription that silently fails without falling back is a bug, not an edge case.
 - Handles every error type in the contract's Error Catalogue (§3) with a specific, human-readable message — no generic "Something went wrong."
+- Calls Supabase directly (via `supabase-js`) for Auth, Vendors/Products CRUD, and Realtime — this is the one deliberate exception to "always go through the backend," per G-10.
 
 **Constraints**:
-- Never calls a third-party API (Africa's Talking, Khaya, Moolre, Anthropic, Google) directly from the frontend — everything goes through the Maame backend.
+- Never calls a third-party API (Africa's Talking, Khaya, Moolre, Anthropic, Google) directly from the frontend — everything goes through the Maame backend. Supabase is the sole exception (Auth, Vendors/Products, Realtime).
 - Never hardcodes a URL, field name, or error message that contradicts the contract.
+- Never uses `SUPABASE_SERVICE_ROLE_KEY` in frontend code — only `SUPABASE_ANON_KEY`, relying on RLS for security.
 
 ---
 
@@ -44,8 +47,8 @@ This project uses three personas. Every conversation in this repo should be cond
 
 **Review priority order** (check in this order, stop and block at the first failure category with unresolved issues):
 1. **Contract fidelity** — does every endpoint, field name, status code, and error shape match the contract exactly?
-2. **Security** — secrets never in code/logs, webhook shared-secret + IP allowlist present (§10), JWT handling correct, no money-movement endpoint missing idempotency
-3. **Data integrity** — foreign keys correct, migration order respected, monetary fields are integer pesewas (never floats), timestamps ISO 8601 UTC
+2. **Security** — secrets never in code/logs (especially `SUPABASE_SERVICE_ROLE_KEY`), webhook shared-secret + IP allowlist present (§10), Row Level Security enabled and correctly scoped on every Supabase-direct table (a missing or wrong RLS policy is treated as seriously as a missing auth check on a custom endpoint), JWT verification correct (never custom-signed), no money-movement endpoint missing idempotency
+3. **Data integrity** — foreign keys correct, migration order respected (including which tables are Supabase-migrated vs. Prisma-migrated), monetary fields are integer pesewas (never floats), timestamps ISO 8601 UTC
 4. **Error handling** — every failure path returns a contract-documented RFC 9457 body, never a raw stack trace or an undocumented shape
 5. **TypeScript correctness** — no `any` escape hatches around contract-shaped data, types match the data models in contract §9
 6. **Performance** — N+1 queries, missing pagination, unbounded webhook retry loops

@@ -16,16 +16,19 @@ Maame is a voice- and USSD-first commerce platform for Ghana. A customer calls a
 |---|---|
 | Language | TypeScript |
 | Backend runtime | Node.js |
-| Database | PostgreSQL |
-| ORM/migrations | Prisma or Drizzle (pick one in Phase 0 and commit to it) |
+| Database | Supabase (hosted Postgres) |
+| Auth | Supabase Auth — no custom JWT signing, no custom login/refresh/logout endpoints |
+| Realtime | Supabase Realtime (Postgres change data capture) — no custom WebSocket server |
+| ORM/migrations | Prisma, scoped only to custom-backend-owned tables (orders, order_items, vendor_fulfillments, payments, disbursements, call_sessions, ussd_sessions, webhook_events, idempotency_keys). Vendors and Products are **not** in the Prisma schema — they're Supabase-direct, managed by Supabase CLI migrations and RLS policies. |
 | Validation | Zod |
-| Real-time | WebSocket (native `ws` or Socket.IO) with polling fallback |
-| Idempotency store | Redis |
+| Idempotency store | A Postgres `idempotency_keys` table (via Prisma) with a scheduled cleanup job — no Redis |
 | Voice | Africa's Talking Voice API |
 | Speech (ASR + TTS) | GhanaNLP Khaya API, Standard tier |
 | Conversation/matching LLM | Claude Haiku 4.5 or Gemini 2.5 Flash-Lite, behind one `LlmClient` interface, selected via `LLM_PROVIDER` env var |
 | SMS / USSD / Payments / Disbursements | Moolre API |
-| Admin frontend | React + TanStack Query (framework choice: confirm in Phase 2, e.g. Vite + React) |
+| Admin frontend | React + TanStack Query, plus `supabase-js` called directly for Auth, Vendors/Products CRUD, and Realtime subscriptions (framework choice: confirm in Phase 2, e.g. Vite + React) |
+
+**Why Prisma is still here despite moving to Supabase**: Supabase *is* Postgres, so nothing about Prisma's relational modeling or migrations stopped being useful — it's just no longer needed for the two tables (`vendors`, `products`) that Supabase's own auto-API and RLS now serve directly. Everything with real business logic (state machines, third-party orchestration, money movement) still goes through the custom backend, and Prisma is the right tool there.
 
 ## Monorepo folder structure (target)
 
@@ -35,13 +38,12 @@ maame/
 ├── MAAME_API_CONTRACT.md
 ├── MAAME_API_BUILD_PLAN.md
 ├── .agents/
+├── supabase/
+│   └── migrations/         # Supabase CLI migrations: profiles, vendors, products, RLS policies
 ├── src/
 │   ├── config/          # env validation, constants
-│   ├── db/               # schema, migrations, client
+│   ├── db/               # Prisma schema, migrations, client — scoped tables only (no vendors/products)
 │   ├── modules/
-│   │   ├── auth/
-│   │   ├── vendors/
-│   │   ├── products/
 │   │   ├── orders/
 │   │   ├── fulfillments/
 │   │   ├── reconciliation/
@@ -68,6 +70,9 @@ maame/
 - **Monetary amounts**: always integers in pesewas (1 GHS = 100 pesewas). Never floats, never GHS-with-decimals in the database or API.
 - **Timestamps**: always ISO 8601 UTC strings.
 - **Field names**: always camelCase in every API response.
-- **Idempotency**: every money-movement or state-mutating admin endpoint requires and honors the `Idempotency-Key` header per contract §2.
+- **Idempotency**: every money-movement or state-mutating admin endpoint requires and honors the `Idempotency-Key` header per contract §2, backed by the `idempotency_keys` Postgres table (no Redis).
 - **Unconfirmed integrations**: Gaps G-6 (Africa's Talking real-time audio streaming shape), G-7 (Moolre USSD inbound shape), and G-8 (Khaya raw request/response JSON) are explicitly marked "not confirmed from public docs" in the contract. Verify against a live account/sandbox before implementing the phase that needs them — do not guess field names and ship them as if confirmed.
 - **LLM provider is config, not code branching**: business logic never checks "if using Claude" vs "if using Gemini" — it calls `LlmClient`, and the provider is selected once, at construction, via `LLM_PROVIDER`.
+- **No custom auth code**: never write JWT signing, password hashing, or session/refresh logic — that's Supabase Auth's job. The backend only verifies tokens Supabase already issued (G-10).
+- **Row Level Security is not optional on any Supabase-direct table**: `vendors` and `products` must have RLS enabled with an explicit, tested policy before they're usable — a table with RLS off is effectively public.
+- **Vendors and Products have no custom backend code**: don't build Express controllers, services, or routes for these two resources — that logic doesn't exist in this system anymore (G-10). The custom backend only *reads* them (via Prisma) when matching catalog items.

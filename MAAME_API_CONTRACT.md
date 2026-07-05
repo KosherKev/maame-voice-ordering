@@ -15,10 +15,12 @@ This document is the single source of truth for every endpoint, webhook, event, 
 - **Base URL**: `https://api.maame.app/v1` (placeholder domain — update once provisioned). Versioning is in the URL path.
 - **Protocol**: HTTPS only. Any HTTP request is redirected with `301` to the HTTPS equivalent; webhook receivers reject plain HTTP outright.
 - **Content types**: All requests and responses use `application/json`, except: (a) error responses, which use `application/problem+json` per RFC 9457, and (b) the two Africa's Talking voice webhook responses, which must return `application/xml` per AT's voice action format (see §7.1 — this is a deliberate, documented exception to the JSON-everywhere rule).
-- **Authentication**:
-  - Admin dashboard endpoints (`/v1/vendors`, `/v1/products`, `/v1/orders`, `/v1/fulfillments`, `/v1/reconciliation`, `/v1/call-sessions`, `/v1/ussd-sessions`) require a JWT access token in `Authorization: Bearer <token>`.
-  - Access tokens expire after 15 minutes. Refresh tokens are issued as httpOnly, Secure, SameSite=Strict cookies, valid 7 days, and rotate on every use (`POST /v1/auth/refresh` issues a new refresh token and invalidates the old one — reuse of an already-rotated refresh token revokes the whole session, standard rotation-detection practice).
-  - Webhook receivers (`/v1/webhooks/*`) are not user-authenticated. See §10 for per-provider verification (shared secret / IP allowlist), since neither Africa's Talking nor Moolre's published docs describe a cryptographic webhook signature scheme.
+- **Authentication (Supabase Auth — G-10)**:
+  - Staff login/logout/session-refresh is handled entirely by **Supabase Auth**, called directly from the frontend via `supabase-js` (`supabase.auth.signInWithPassword`, automatic session refresh). There are no custom `/v1/auth/*` endpoints in this API — see G-10 in §8.
+  - Custom backend endpoints (`/v1/orders`, `/v1/fulfillments`, `/v1/reconciliation`, `/v1/call-sessions`, `/v1/ussd-sessions`) require the Supabase-issued JWT in `Authorization: Bearer <token>`. The backend verifies it against the Supabase project's JWT secret (`SUPABASE_JWT_SECRET`) — it never signs its own tokens.
+  - Staff role is read from a `profiles` table (`id` = `auth.users.id`, `role` column), joined at request time by the auth middleware, not encoded in the JWT itself (keeps role changes effective immediately, no token refresh required).
+  - Vendors and Products have **no custom backend endpoints at all** — the frontend calls Supabase's auto-generated REST API for these directly, secured by Row Level Security (RLS) policies scoped to authenticated staff. See §5.2/§5.3.
+  - Webhook receivers (`/v1/webhooks/*`) are not Supabase-authenticated — they're external providers (Africa's Talking, Moolre), not staff. See §10 for per-provider verification (shared secret / IP allowlist).
 - **Standard request headers**: `Authorization`, `Content-Type: application/json`, `Idempotency-Key` (required on all mutating admin endpoints — see below), `X-Request-Id` (optional, echoed back if provided).
 - **Standard response headers**: `X-Request-Id` (generated if not supplied), `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`.
 - **Error format**: RFC 9457 Problem Details. Every error response has this exact shape:
@@ -45,7 +47,7 @@ This document is the single source of truth for every endpoint, webhook, event, 
   ```
   No offset/page-number pagination anywhere in this API.
 - **Rate limiting**: Unauthenticated webhook endpoints: 60 req/min per source IP. Authenticated admin endpoints: 120 req/min per user. Login endpoint: 5 req/min per IP (brute-force protection).
-- **Idempotency**: All `POST` and `PATCH` requests to admin-facing mutating endpoints require an `Idempotency-Key` header (client-generated UUID v4). The server stores the (key → response) pair for 24 hours; a repeated key with an identical body returns the original cached response with the original status code; a repeated key with a *different* body returns `409 Conflict`. Backed by a fast persistent store (Redis) with a 24h TTL, matching Stripe's pattern. Order-creation and disbursement-triggering endpoints additionally pass this key through as Moolre's `externalref`, so a retried request cannot double-charge or double-pay.
+- **Idempotency**: All `POST` and `PATCH` requests to admin-facing mutating endpoints require an `Idempotency-Key` header (client-generated UUID v4). The server stores the (key → response) pair for 24 hours; a repeated key with an identical body returns the original cached response with the original status code; a repeated key with a *different* body returns `409 Conflict`. Backed by an `idempotency_keys` table in the same Supabase Postgres database (key, response body, status code, `expires_at`), with a scheduled cleanup job (`pg_cron` or an external cron hitting a cleanup endpoint) removing expired rows — no separate Redis instance required (G-11, §8). Order-creation and disbursement-triggering endpoints additionally pass this key through as Moolre's `externalref`, so a retried request cannot double-charge or double-pay.
 - **File uploads**: Not part of the public API in v1 — call audio is streamed server-side between Africa's Talking and GhanaNLP Khaya and never touches a client-facing upload endpoint. If call-recording storage is added later, it must validate by magic bytes (not `Content-Type`), cap at 10MB, and accept `audio/wav` and `audio/mpeg` only.
 
 ## 3. Error Catalogue
@@ -69,71 +71,51 @@ This document is the single source of truth for every endpoint, webhook, event, 
 
 Two independent real-time surfaces exist. They are not unified because they serve different audiences and different providers.
 
-### 4.1 Admin Dashboard WebSocket (`wss://api.maame.app/v1/ws`)
+### 4.1 Admin Dashboard Realtime (Supabase Realtime — G-10)
 
-Authenticated with the same JWT (passed as `?token=` on the upgrade request, since browsers can't set custom headers on WebSocket upgrades). Channel naming: `orders` (all order changes), `order:{orderId}` (one order's detail view). Event envelope:
-```json
-{ "event": "order.statusChanged", "timestamp": "2026-07-05T14:22:00Z", "data": { "orderId": "ord_123", "previousStatus": "awaiting_payment", "newStatus": "paid" } }
-```
-Events: `order.statusChanged`, `order.paymentConfirmed`, `order.fulfillmentDelivered`, `order.disbursed`, `session.transcriptAppended` (live transcript line for the Order Detail page during an active call).
+There is no custom WebSocket server in this system. The admin dashboard subscribes **directly to Postgres table changes** using `supabase-js`'s Realtime client, authenticated with the same Supabase session used for Auth. This is Postgres logical-replication-based change data capture, not an application-level event bus — the backend does not "emit" anything; it simply writes to the database and Supabase pushes the change.
 
-**Polling fallback**: if the socket disconnects, the dashboard falls back to `GET /v1/orders?since={lastSeenTimestamp}` every 5 seconds until reconnection, capped at a 60-second timeout before showing a "live updates paused" banner.
+Tables with Realtime enabled and their RLS-scoped subscriptions:
+- `orders` — dashboard subscribes to all rows (staff role) for the Live Orders board; filters client-side by status/channel
+- `orders:id=eq.{orderId}` — Order Detail page subscribes to one row
+- `vendor_fulfillments:order_id=eq.{orderId}` — Order Detail page, fulfillment status
+- `call_sessions:id=eq.{callSessionId}` — Order Detail page, live transcript (each new transcript line is a row insert, not an update, so it streams naturally via Realtime's `INSERT` event)
+
+The client library (`supabase-js`) handles reconnection and backoff internally. As a defense-in-depth fallback if Realtime is unreachable (e.g. corporate network blocking WebSockets), the dashboard falls back to polling `GET /v1/orders?since={lastSeenTimestamp}` (custom backend endpoint, §5.4) every 5 seconds, capped at a 60-second timeout before showing a "live updates paused" banner.
 
 ### 4.2 Provider Webhooks (inbound to us)
 
-Not WebSocket events — plain HTTP POST webhooks from Africa's Talking, Moolre. Documented as endpoints in §5.5 and integration behaviour in §7.
+Plain HTTP POST webhooks from Africa's Talking and Moolre — unrelated to Supabase Realtime, since these are external providers, not our own database changes. Documented as endpoints in §5.8 and integration behaviour in §7.
 
 ## 5. Complete Endpoint Reference
 
 ### 5.1 Auth
 
-**`POST /v1/auth/login`** — Auth: none. Idempotent: no.
-Request: `{ "username": "string", "password": "string" }`
-Response `200`: `{ "accessToken": "string", "user": { "id": "string", "username": "string", "role": "admin" } }` (refresh token set as httpOnly cookie)
-Errors: `validation-error`, `invalid-credentials`, `rate-limited`
+**No custom endpoints.** Staff authentication is handled entirely by Supabase Auth, called directly from the frontend via `supabase-js` (G-10, §8):
+- Login: `supabase.auth.signInWithPassword({ email, password })`
+- Session refresh: handled automatically by the client SDK
+- Logout: `supabase.auth.signOut()`
 
-**`POST /v1/auth/refresh`** — Auth: refresh cookie. Idempotent: no.
-Response `200`: `{ "accessToken": "string" }` (new refresh cookie set)
-Errors: `unauthorized`
+The custom backend never issues or signs a token — it only verifies the Supabase-issued JWT on protected routes (§2).
 
-**`POST /v1/auth/logout`** — Auth: bearer. Idempotent: yes.
-Response `204`
-Errors: `unauthorized`
+### 5.2 Vendors — Supabase-direct, RLS-secured (no custom endpoints)
 
-### 5.2 Vendors
+The frontend calls Supabase's auto-generated REST API directly: `GET/POST/PATCH/DELETE https://{project}.supabase.co/rest/v1/vendors`. No custom Express controller exists for this resource (G-10, §8). Security is enforced by Row Level Security policies, not application code:
 
-**`GET /v1/vendors`** — Auth: bearer. Query: `?limit&cursor&status=active|inactive`
-Response `200`: paginated envelope of Vendor objects (§9)
+```sql
+-- Read: any authenticated staff member
+create policy "staff can read vendors" on vendors for select
+  using (auth.role() = 'authenticated');
+-- Write: any authenticated staff member (single staff role in v1 — see spec, no tiered permissions yet)
+create policy "staff can write vendors" on vendors for insert, update, delete
+  using (auth.role() = 'authenticated');
+```
 
-**`POST /v1/vendors`** — Auth: bearer. Idempotency-Key: required.
-Request: `{ "name": "string", "phone": "string", "momoChannel": "mtn|telecel|at", "active": true }`
-Response `201`: Vendor object
-Errors: `validation-error`, `idempotency-conflict`
+Table shape matches the Vendor data model in §9. Soft-delete convention (`active: false`, never hard-delete a vendor with order history) is enforced by a `before delete` Postgres trigger that raises an exception if the vendor has any `order_items`, forcing the frontend to deactivate instead.
 
-**`GET /v1/vendors/{vendorId}`** — Auth: bearer. Response `200`: Vendor. Errors: `not-found`
+### 5.3 Products — Supabase-direct, RLS-secured (no custom endpoints)
 
-**`PATCH /v1/vendors/{vendorId}`** — Auth: bearer. Idempotency-Key: required.
-Request: any subset of `{ "name", "phone", "momoChannel", "active" }`
-Response `200`: Vendor. Errors: `validation-error`, `not-found`, `idempotency-conflict`
-
-**`DELETE /v1/vendors/{vendorId}`** — Auth: bearer. Response `204` (soft delete — sets `active: false`, never hard-deletes a vendor with order history). Errors: `not-found`
-
-### 5.3 Products
-
-**`GET /v1/products`** — Auth: bearer. Query: `?limit&cursor&vendorId&inStock=true|false&search=string`
-Response `200`: paginated Product objects
-
-**`POST /v1/products`** — Auth: bearer. Idempotency-Key: required.
-Request: `{ "name": "string", "priceInPesewas": integer, "vendorId": "string", "category": "string", "inStock": true }`
-Response `201`: Product. Errors: `validation-error`, `not-found` (bad vendorId), `idempotency-conflict`
-
-**`GET /v1/products/{productId}`** — Response `200`: Product. Errors: `not-found`
-
-**`PATCH /v1/products/{productId}`** — Auth: bearer. Idempotency-Key: required.
-Request: any subset of `{ "name", "priceInPesewas", "category", "inStock" }`
-Response `200`: Product. Errors: `validation-error`, `not-found`, `idempotency-conflict`
-
-**`DELETE /v1/products/{productId}`** — Response `204`. Errors: `not-found`
+Same pattern as §5.2: `GET/POST/PATCH/DELETE https://{project}.supabase.co/rest/v1/products`, RLS-scoped to authenticated staff. Table shape matches §9. The custom backend *reads* this table (via Prisma, read-only) when matching catalog items during a call — it never writes to it.
 
 ### 5.4 Orders
 
@@ -192,17 +174,26 @@ Response `200`: paginated CallSession summaries
 
 ## 6. Page → Route Index
 
-| Page | Endpoints called, in order |
+| Page | Calls, in order |
 |---|---|
-| Login | `POST /v1/auth/login` |
-| Live Orders | `GET /v1/orders?status=...` (initial load) → WebSocket subscribe to `orders` channel |
-| Order Detail | `GET /v1/orders/{orderId}` → `GET /v1/call-sessions/{id}` (if voice) or `GET /v1/ussd-sessions/{id}` (if ussd) → WebSocket subscribe to `order:{orderId}` |
-| Vendor Management | `GET /v1/vendors` → `POST /v1/vendors` / `PATCH /v1/vendors/{id}` / `DELETE /v1/vendors/{id}` |
-| Product Catalog | `GET /v1/products` → `POST /v1/products` / `PATCH /v1/products/{id}` / `DELETE /v1/products/{id}` |
+| Login | Supabase Auth directly: `supabase.auth.signInWithPassword()` — no custom endpoint |
+| Live Orders | `GET /v1/orders?status=...` (initial load) → Supabase Realtime subscribe to `orders` table |
+| Order Detail | `GET /v1/orders/{orderId}` → `GET /v1/call-sessions/{id}` (if voice) or `GET /v1/ussd-sessions/{id}` (if ussd) → Supabase Realtime subscribe to `orders:id=eq.{orderId}`, `vendor_fulfillments:order_id=eq.{orderId}`, and (if voice) `call_sessions:id=eq.{callSessionId}` |
+| Vendor Management | Supabase REST directly: `GET/POST/PATCH/DELETE .../rest/v1/vendors` — no custom endpoint |
+| Product Catalog | Supabase REST directly: `GET/POST/PATCH/DELETE .../rest/v1/products` — no custom endpoint |
 | Fulfillment | `GET /v1/orders/{orderId}/fulfillments` → `POST /v1/fulfillments/{id}/mark-delivered` |
 | Reconciliation | `GET /v1/reconciliation/summary` → `GET /v1/reconciliation/transactions` |
 
 ## 7. Third-Party Integration Notes
+
+### 7.0 Supabase (Auth, Realtime, Postgres, Storage of RLS-secured tables)
+
+- Not a third-party integration in the same sense as AT/Khaya/Moolre — Supabase *is* our database and auth provider, not an external service we call for a discrete feature. Documented here because it's still an external hosted dependency the rest of the system relies on.
+- **Auth**: staff accounts live in Supabase's managed `auth.users` table; we extend it with a `public.profiles` table (`id` = `auth.users.id`, `role text`) for anything role-specific. Frontend never talks to our backend for login — only to Supabase directly.
+- **Realtime**: Postgres logical replication, exposed via `supabase-js` channels, RLS-scoped. No custom WebSocket server to run or maintain.
+- **Database**: hosted Postgres. Prisma (backend) and Supabase's PostgREST auto-API (frontend, for vendors/products) both point at the *same* underlying database — there is one source of truth, accessed two ways depending on which layer owns the logic.
+- **Auth method for backend verification**: the custom Express backend verifies inbound JWTs using the Supabase project's JWT secret (`SUPABASE_JWT_SECRET`, HS256) or JWKS endpoint if the project uses RS256 — confirm which your Supabase project is configured for before Phase 1.
+- **Service role key**: `SUPABASE_SERVICE_ROLE_KEY` is used server-side only (Prisma connection, and any backend operation that must bypass RLS, e.g. writing an Order on behalf of a phone-based customer who has no Supabase Auth session at all — customers never authenticate with Supabase, only staff do). Never expose the service role key to the frontend.
 
 ### 7.1 Africa's Talking Voice API
 
@@ -257,6 +248,8 @@ Carried forward from `MAAME_SPEC.md` §8 (G-1 through G-5), plus gaps found whil
 - **G-7** (new): Moolre's USSD inbound webhook shape isn't fully documented publicly beyond the `*203#` dial-code convention. **Resolution**: confirm with Moolre support/sandbox before Phase 7 (USSD channel) implementation.
 - **G-8** (new): Khaya's exact raw HTTP request/response JSON (vs. the Python SDK's abstracted method signatures) isn't confirmed. **Resolution**: confirm against the Khaya developer portal (requires signup) before Phase 3 implementation; the internal `AsrClient`/`TtsClient` interfaces should wrap whatever the real shape turns out to be, so the rest of the codebase never depends on Khaya's wire format directly.
 - **G-9** (new): Neither Africa's Talking nor Moolre document cryptographic webhook signatures. **Resolution**: see §10 — shared secret in the callback URL query string plus source-IP allowlisting, with a migration path to signature verification if either provider adds it later.
+- **G-10** (new — architecture decision, replaces the original Postgres/Prisma-only/custom-JWT/custom-WebSocket design): the system moved to Supabase for Auth, Realtime, and (for Vendors/Products only) direct database access via RLS instead of custom endpoints. **Resolution**: custom `/v1/auth/*` endpoints removed entirely (§5.1); Vendors and Products CRUD removed from the custom backend and replaced with RLS policies (§5.2, §5.3); the custom WebSocket server removed and replaced with Supabase Realtime subscriptions (§4.1). Everything with real business logic (orders, fulfillments, reconciliation, sessions, all provider webhooks) stays on the custom Express backend, since Supabase's auto-API isn't a fit for multi-step state transitions or third-party orchestration. **Impact**: Prisma is retained but scoped only to the tables the custom backend owns; RLS policies become part of this contract's security surface and must be reviewed with the same rigor as endpoint code (see §10).
+- **G-11** (new): Redis, originally proposed for the idempotency key store, is dropped in favor of a `idempotency_keys` Postgres table in the same Supabase database, with a scheduled cleanup job. **Resolution**: removes a piece of infrastructure with no loss of correctness at this system's volume (low thousands of orders/month per the unit economics model) — revisit only if idempotency-check latency becomes a measured problem.
 
 ## 9. Data Models Reference
 
@@ -280,18 +273,22 @@ All monetary fields are integers in pesewas (1 GHS = 100 pesewas). All timestamp
 
 **USSDSession**: `id`, `customerPhone`, `sessionIdMoolre` (internal correlation id — *internal only*, never returned), `status` (`active|completed|abandoned`), `orderId`, `menuState`, `createdAt`, `endedAt`.
 
-**AdminUser**: `id`, `username`, `role` (`admin`), `createdAt`. *Internal only*: `passwordHash` (never in any response, ever).
+**Profile** (extends Supabase's `auth.users`, replaces the original custom AdminUser model — G-10): `id` (= `auth.users.id`), `role` (`admin` — single role in v1), `createdAt`. Password/credential handling lives entirely in Supabase Auth, never in our own tables.
 
 **WebhookEvent**: `id`, `source` (`africas_talking|moolre`), `rawPayload` (stored for audit/replay — *internal only*, never exposed via public API; accessible only through direct DB access for engineering debugging), `receivedAt`.
 
+**IdempotencyKey** (new — G-11, replaces the original Redis-backed store): `key` (the client-supplied `Idempotency-Key`, primary key), `requestBodyHash`, `responseBody`, `responseStatus`, `expiresAt`. *Internal only* — never exposed via any API response, purely infrastructure.
+
 ## 10. Security Baseline
 
-- **JWT handling**: access tokens 15-min expiry, signed with a rotated secret (stored in a secrets manager, never in code or `.env` committed to git). Refresh tokens httpOnly + Secure + SameSite=Strict cookies, rotate on every use, reuse-of-stale-token revokes the session.
+- **JWT handling**: no custom signing — the backend only *verifies* Supabase-issued JWTs against `SUPABASE_JWT_SECRET` (or JWKS if the project uses RS256). Token lifetime, refresh, and rotation are entirely Supabase Auth's responsibility, not ours to re-implement.
+- **Row Level Security is a first-class security control, not an implementation detail.** Every table exposed via Supabase's auto-API (`vendors`, `products`) must have RLS enabled with an explicit policy — a table with RLS *disabled* is effectively public to anyone with the anon key, so "did we enable and correctly scope RLS" is checked with the same rigor as endpoint auth in code review (see `.agents/agents.md`, @code-reviewer).
+- **Service role key isolation**: `SUPABASE_SERVICE_ROLE_KEY` (bypasses RLS) is a backend-only secret, used solely for the Prisma connection and for writing Orders on behalf of unauthenticated phone customers. It must never reach the frontend bundle, ever — treat a leak of this key as equivalent to a full database compromise.
 - **Webhook verification**: since neither Africa's Talking nor Moolre document a cryptographic signature scheme, both inbound webhook endpoints require (a) a long random shared secret passed as a query parameter on the registered callback URL (not guessable, rotated if ever leaked in logs), and (b) a source-IP allowlist of each provider's published outbound IP ranges. This is a documented compensating control, not a substitute for real signature verification if either provider adds it later — revisit as Gap G-9 is resolved.
-- **Secrets storage**: all API keys (Africa's Talking, Khaya, Anthropic, Google, Moolre) live in environment variables injected at deploy time, never committed to the repository, never logged in plaintext (webhook payloads containing tokens must be redacted before writing to `WebhookEvent.rawPayload`).
+- **Secrets storage**: all API keys (Africa's Talking, Khaya, Anthropic, Google, Moolre, Supabase service role) live in environment variables injected at deploy time, never committed to the repository, never logged in plaintext (webhook payloads containing tokens must be redacted before writing to `WebhookEvent.rawPayload`).
 - **File validation**: not applicable in v1 (no public file upload endpoint — see §2).
-- **CORS policy**: admin dashboard origin only, explicit allowlist, no wildcard `*`.
-- **Rate limit scope**: per §2 — stricter on `/v1/auth/login`, standard elsewhere, generous but present on webhook receivers.
+- **CORS policy**: admin dashboard origin only, explicit allowlist, no wildcard `*`, on the custom backend. (Supabase's own CORS/API settings are configured separately in the Supabase dashboard for the direct vendors/products calls.)
+- **Rate limit scope**: per §2 — standard on custom backend endpoints, generous but present on webhook receivers. Supabase's own API has its own platform-level rate limiting, outside this contract's scope.
 - **Error response sanitisation**: `500 internal-error` responses never leak stack traces, database error messages, or upstream provider raw error bodies to the client — those are logged server-side only, with `instance` set to a request id the engineer can grep for.
 
 ## 11. References
@@ -306,3 +303,7 @@ All monetary fields are integers in pesewas (1 GHS = 100 pesewas). All timestamp
 - [Moolre — pricing](https://moolre.com/pricing)
 - [Anthropic — Claude API pricing](https://platform.claude.com/docs/en/about-claude/pricing)
 - [Google — Gemini API pricing](https://ai.google.dev/gemini-api/docs/pricing)
+- [Supabase — Auth documentation](https://supabase.com/docs/guides/auth)
+- [Supabase — Realtime documentation](https://supabase.com/docs/guides/realtime)
+- [Supabase — Row Level Security guide](https://supabase.com/docs/guides/database/postgres/row-level-security)
+- [Prisma — MongoDB connector limitations (referenced during DB decision — not used, kept for context)](https://www.prisma.io/docs/orm/overview/databases/mongodb)
