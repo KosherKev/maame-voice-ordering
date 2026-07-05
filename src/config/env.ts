@@ -19,9 +19,16 @@ const envSchema = z.object({
   MOOLRE_API_KEY: z.string().min(1),
   MOOLRE_VASKEY: z.string().min(1),
   MOOLRE_PUBKEY: z.string().min(1),
-  WEBHOOK_SHARED_SECRET: z.string().min(1),
+  // Per-provider webhook secrets (B-5 — split from single WEBHOOK_SHARED_SECRET for isolation)
+  AT_WEBHOOK_SECRET: z.string().min(1),
+  MOOLRE_WEBHOOK_SECRET: z.string().min(1),
   LLM_PROVIDER: z.enum(['claude', 'gemini']),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+  // CORS: comma-separated list of allowed origins (A-3 — env-driven for production)
+  ALLOWED_ORIGINS: z.string().default('http://localhost:5173,http://localhost:3000'),
+  // IP allowlists: comma-separated CIDR ranges for webhook source-IP verification (B-4, G-9)
+  AT_IP_ALLOWLIST: z.string().default(''),
+  MOOLRE_IP_ALLOWLIST: z.string().default(''),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -34,3 +41,4 @@ if (!parsed.success) {
 
 export const env = parsed.data;
 export type Env = z.infer<typeof envSchema>;
+

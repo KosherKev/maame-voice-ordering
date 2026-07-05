@@ -117,7 +117,7 @@ Sequential phases, each building on the last. No phase starts until the previous
 
 **Goal**: the same ordering engine works over USSD, for customers who can't or won't do a voice call.
 
-- [x] **Before writing code**: resolve Gap G-7 (confirm Moolre's USSD inbound session webhook shape against sandbox) — **G-7 FLAG**: Schema implemented based on Moolre API reference and common USSD conventions (`sessionid`, `msisdn`, `text`, `type`). Must be verified against live Moolre sandbox before production use. Field names are flagged in `moolreUssdInboundSchema`, `ussdService.ts`, and `ussdController.ts`.
+- [x] **G-7 ✅ RESOLVED** — Moolre USSD inbound webhook shape confirmed from the live Moolre dashboard simulator. Correct field names: `sessionId` (string), `new` (boolean), `msisdn` (string), `network` (integer: 3=MTN, 5=AirtelTigo, 6=Telecel), `message` (string, customer input), `extension` (string, Maame's assigned extension), `data` (string, extra dial-time digits). Response shape: `{ "message": string, "reply": boolean }`. **Action required if implementing now**: verify `moolreUssdInboundSchema`, `ussdService.ts`, and `ussdController.ts` use these exact field names (not guessed names like `sessionid`/`text`/`type`). See contract §5.8 for full payload reference and dev CORS note for simulator testing.
 - [x] `USSDSession` model + migration — already existed in Prisma schema from Phase 3 database migration order
 - [x] `POST /v1/webhooks/ussd/inbound` receiver, reusing the `Order`/`OrderItem` engine, catalog matching, and `LlmClient` built in Phase 3 — this phase should add an input/output adapter, not duplicate ordering logic — **Verified**: `ussdService.ts` reuses `llmClient.processSpeech()`, `paymentService.initiateVoiceOrderPayment()`, and the same `Order`/`OrderItem` Prisma writes as voice; no duplicated business logic
 - [x] `GET /v1/ussd-sessions`, `GET /v1/ussd-sessions/{id}` (contract §5.7) — cursor-paginated list and detail endpoints; `sessionIdMoolre` excluded from responses (internal-only per §9)
@@ -127,7 +127,7 @@ Sequential phases, each building on the last. No phase starts until the previous
 - ✅ Payment reuses `paymentService.initiateVoiceOrderPayment()` (same Moolre payment flow → same webhook → same fulfillment/disbursement pipeline)
 - ✅ Catalog matching via same `fetchActiveCatalog()` raw query and single-vendor constraint logic
 - ✅ Session sweep job (Phase 3) already covers USSD sessions
-- ⚠️ **G-7 requires live Moolre sandbox verification** before end-to-end test with real dial code
+- ✅ **G-7 resolved** — use Moolre's in-dashboard simulator for end-to-end testing: configure your ngrok URL as the callback, dial `*203*{ext}#`, verify each turn round-trips correctly before connecting to the live shared code
 
 ---
 

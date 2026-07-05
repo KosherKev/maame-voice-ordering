@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { ZodError } from 'zod';
 import { DomainError, ValidationError } from '../errors/index.js';
 
 export function errorHandlerMiddleware(
@@ -27,6 +28,24 @@ export function errorHandlerMiddleware(
     }
 
     return res.status(status).json(body);
+  }
+
+  // Handle Zod validation errors → 400 validation-error (RFC 9457)
+  // Zod throws when .parse() fails in controllers/schemas — must map to contract §3
+  if (err instanceof ZodError) {
+    res.setHeader('Content-Type', 'application/problem+json');
+    const errors = err.issues.map((issue) => ({
+      detail: issue.message,
+      pointer: `/${issue.path.join('/')}`,
+    }));
+    return res.status(400).json({
+      type: 'https://api.maame.app/problems/validation-error',
+      title: 'Validation error',
+      status: 400,
+      detail: errors.length === 1 ? errors[0].detail : `${errors.length} validation errors`,
+      instance: req.originalUrl,
+      errors,
+    });
   }
 
   // Handle standard express JSON parsing errors
