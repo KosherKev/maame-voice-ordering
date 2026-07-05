@@ -1,17 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
-import { redis, isRedisAvailable } from '../db/redis.js';
+import { createHash } from 'crypto';
+import { prisma } from '../db/prisma.js';
 import { ValidationError, IdempotencyConflictError } from '../errors/index.js';
-
-interface CachedResponse {
-  requestBody: string;
-  statusCode: number;
-  headers: Record<string, string>;
-  body: string;
-}
-
-// In-memory fallback map for environments without Redis
-const memoryCache = new Map<string, CachedResponse>();
 
 export async function idempotencyMiddleware(req: Request, res: Response, next: NextFunction) {
   // Only enforce on mutating admin endpoints (POST, PATCH) as per contract
@@ -36,76 +27,91 @@ export async function idempotencyMiddleware(req: Request, res: Response, next: N
     return next(new ValidationError('Idempotency-Key header must be a valid UUID v4'));
   }
 
-  const cacheKey = `idempotency:${idempotencyKey}`;
   const incomingBodyStr = JSON.stringify(req.body);
+  const requestBodyHash = createHash('sha256').update(incomingBodyStr).digest('hex');
 
   try {
-    let cached: CachedResponse | null = null;
-
-    if (isRedisAvailable() && redis) {
-      const data = await redis.get(cacheKey);
-      if (data) {
-        cached = JSON.parse(data);
-      }
-    } else {
-      cached = memoryCache.get(idempotencyKey) || null;
-    }
+    const cached = await prisma.idempotencyKey.findUnique({
+      where: { key: idempotencyKey },
+    });
 
     if (cached) {
-      // If key is reused with a different body, it's a conflict
-      if (cached.requestBody !== incomingBodyStr) {
-        return next(new IdempotencyConflictError());
-      }
-
-      // Replay the cached response
-      res.status(cached.statusCode);
-      Object.entries(cached.headers).forEach(([name, val]) => {
-        res.setHeader(name, val);
-      });
-      res.setHeader('X-Cache-Lookup', 'HIT - Idempotent');
-      return res.send(cached.body);
-    }
-  } catch (err) {
-    console.error('Error fetching from idempotency cache:', err);
-  }
-
-  // Intercept response to cache it on successful/client-error response
-  const originalSend = res.send;
-  res.send = function (body): Response {
-    if (res.statusCode < 500) {
-      const responseBody = typeof body === 'string' ? body : JSON.stringify(body);
-      
-      const headersToCache: Record<string, string> = {};
-      const headers = res.getHeaders();
-      Object.entries(headers).forEach(([name, val]) => {
-        if (val !== undefined && typeof val === 'string') {
-          headersToCache[name] = val;
-        }
-      });
-
-      const responseToCache: CachedResponse = {
-        requestBody: incomingBodyStr,
-        statusCode: res.statusCode,
-        headers: headersToCache,
-        body: responseBody,
-      };
-
-      if (isRedisAvailable() && redis) {
-        // Store in Redis with 24 hours TTL (86400 seconds)
-        redis.set(cacheKey, JSON.stringify(responseToCache), 'EX', 86400).catch((err) => {
-          console.error('Error writing to Redis idempotency cache:', err);
+      // Check if the key has expired
+      if (new Date() > cached.expiresAt) {
+        // Delete expired key and proceed as a new request
+        await prisma.idempotencyKey.delete({
+          where: { key: idempotencyKey },
+        }).catch((err) => {
+          console.warn('Failed to delete expired idempotency key:', err);
         });
       } else {
-        memoryCache.set(idempotencyKey, responseToCache);
-        // Evict from memory after 24h
-        setTimeout(() => {
-          memoryCache.delete(idempotencyKey);
-        }, 86400 * 1000);
+        // If key is reused with a different body, it's a conflict
+        if (cached.requestBodyHash !== requestBodyHash) {
+          return next(new IdempotencyConflictError());
+        }
+
+        // Replay the cached response
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('X-Cache-Lookup', 'HIT - Idempotent');
+        return res.status(cached.responseStatus).send(cached.responseBody);
       }
     }
+  } catch (err) {
+    console.error('Error querying idempotency store:', err);
+    // Proceed if db check fails to prevent blocking requests, or we could fail.
+    // In production, we usually prefer to proceed or fail. Let's proceed but log.
+  }
 
-    return originalSend.call(this, body);
+  // Intercept response to cache it on successful/client-error response (status < 500)
+  const originalSend = res.send;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  res.send = function (body): any {
+    const handleUpsertAndSend = async () => {
+      if (res.statusCode < 500) {
+        const responseBody = typeof body === 'string' ? body : JSON.stringify(body);
+        const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours TTL
+
+        try {
+          await prisma.idempotencyKey.upsert({
+            where: { key: idempotencyKey },
+            create: {
+              key: idempotencyKey,
+              requestBodyHash,
+              responseStatus: res.statusCode,
+              responseBody,
+              expiresAt,
+            },
+            update: {
+              requestBodyHash,
+              responseStatus: res.statusCode,
+              responseBody,
+              expiresAt,
+            },
+          });
+        } catch (err) {
+          console.error('Error writing to idempotency store:', err);
+        }
+      }
+      return originalSend.call(this, body);
+    };
+
+    handleUpsertAndSend();
+    return this;
   };
 
   next();
+}
+
+/**
+ * Utility function to clean up expired idempotency keys from the database.
+ */
+export async function cleanupExpiredIdempotencyKeys(): Promise<number> {
+  const result = await prisma.idempotencyKey.deleteMany({
+    where: {
+      expiresAt: {
+        lt: new Date(),
+      },
+    },
+  });
+  return result.count;
 }

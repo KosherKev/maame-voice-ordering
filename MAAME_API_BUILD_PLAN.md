@@ -8,16 +8,16 @@ Sequential phases, each building on the last. No phase starts until the previous
 
 **Goal**: prove the infrastructure works before any feature code is written.
 
-- [ ] Create the Supabase project (or confirm the existing one), note `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET`
-- [ ] Scaffold Node.js + TypeScript repo: `package.json`, `tsconfig.json`, ESLint + Prettier config
-- [ ] Wire Prisma against the Supabase Postgres connection string, scoped to the custom-backend-owned tables only (orders, order_items, vendor_fulfillments, payments, disbursements, call_sessions, ussd_sessions, webhook_events, idempotency_keys) — **not** vendors/products, which Supabase's own auto-API owns directly (contract §5.2, §5.3, G-10)
-- [ ] `src/config/env.ts` — Zod-validated environment schema covering every credential: `AT_API_KEY`, `AT_USERNAME`, `KHAYA_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`, `MOOLRE_API_USER`, `MOOLRE_API_KEY`, `MOOLRE_VASKEY`, `MOOLRE_PUBKEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET`, `DATABASE_URL`, `WEBHOOK_SHARED_SECRET`, `LLM_PROVIDER`. No `JWT_SECRET` (we don't sign our own tokens — G-10) and no `REDIS_URL` (dropped — G-11). Boot fails loudly and immediately if any required var is missing.
-- [ ] Global error-handling middleware producing RFC 9457 `application/problem+json` per contract §2–§3
-- [ ] Request-id middleware (`X-Request-Id`, generated if absent, echoed on every response)
-- [ ] Rate-limiter middleware (scopes per contract §2: standard on custom backend endpoints, generous on webhook receivers — no `/v1/auth/login` rate limit needed since that endpoint no longer exists)
-- [ ] `idempotency_keys` table + migration, plus middleware (key → response cache, 24h `expiresAt`) reading/writing this table directly via Prisma — no Redis (G-11). Add a scheduled cleanup (`pg_cron` in Supabase, or a simple cron-triggered cleanup endpoint) that deletes expired rows.
-- [ ] `GET /v1/health` endpoint
-- [ ] `WebhookEvent` model + migration (raw payload logging, with redaction of any token-looking fields before storage) — this and the redaction logic carry over unchanged from any prior Postgres-only bootstrap, since it's DB-shape work, not auth/realtime work
+- [x] Create the Supabase project (or confirm the existing one), note `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET`
+- [x] Scaffold Node.js + TypeScript repo: `package.json`, `tsconfig.json`, ESLint + Prettier config
+- [x] Wire Prisma against the Supabase Postgres connection string, scoped to the custom-backend-owned tables only (orders, order_items, vendor_fulfillments, payments, disbursements, call_sessions, ussd_sessions, webhook_events, idempotency_keys) — **not** vendors/products, which Supabase's own auto-API owns directly (contract §5.2, §5.3, G-10)
+- [x] `src/config/env.ts` — Zod-validated environment schema covering every credential: `AT_API_KEY`, `AT_USERNAME`, `KHAYA_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`, `MOOLRE_API_USER`, `MOOLRE_API_KEY`, `MOOLRE_VASKEY`, `MOOLRE_PUBKEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET`, `DATABASE_URL`, `WEBHOOK_SHARED_SECRET`, `LLM_PROVIDER`. No `JWT_SECRET` (we don't sign our own tokens — G-10) and no `REDIS_URL` (dropped — G-11). Boot fails loudly and immediately if any required var is missing.
+- [x] Global error-handling middleware producing RFC 9457 `application/problem+json` per contract §2–§3
+- [x] Request-id middleware (`X-Request-Id`, generated if absent, echoed on every response)
+- [x] Rate-limiter middleware (scopes per contract §2: standard on custom backend endpoints, generous on webhook receivers — no `/v1/auth/login` rate limit needed since that endpoint no longer exists)
+- [x] `idempotency_keys` table + migration, plus middleware (key → response cache, 24h `expiresAt`) reading/writing this table directly via Prisma — no Redis (G-11). Add a scheduled cleanup (`pg_cron` in Supabase, or a simple cron-triggered cleanup endpoint) that deletes expired rows.
+- [x] `GET /v1/health` endpoint
+- [x] `WebhookEvent` model + migration (raw payload logging, with redaction of any token-looking fields before storage) — this and the redaction logic carry over unchanged from any prior Postgres-only bootstrap, since it's DB-shape work, not auth/realtime work
 
 **Acceptance criteria**: server boots and `GET /v1/health` returns `200`; removing any required env var causes a clear startup failure, not a runtime crash; hitting an undefined route returns a well-formed `not-found` problem+json body, never a raw stack trace; Prisma successfully migrates against the Supabase Postgres connection string; an idempotency key round-trips through the Postgres table (write, read-back-on-repeat, conflict-on-mismatch) with no Redis running anywhere.
 

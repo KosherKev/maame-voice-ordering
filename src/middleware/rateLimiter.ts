@@ -1,16 +1,6 @@
 import rateLimit from 'express-rate-limit';
 import { RateLimitedError } from '../errors/index.js';
 
-export const loginRateLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  max: 5,
-  standardHeaders: true,
-  legacyHeaders: false,
-  handler: (req, res, next) => {
-    next(new RateLimitedError('Too many login attempts. Please try again later.'));
-  },
-});
-
 export const webhookRateLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
   max: 60,
@@ -35,3 +25,4 @@ export const adminRateLimiter = rateLimit({
     next(new RateLimitedError('Rate limit exceeded.'));
   },
 });
+export default adminRateLimiter;

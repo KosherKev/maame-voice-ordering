@@ -3,6 +3,7 @@ import cors from 'cors';
 import { requestIdMiddleware } from './middleware/requestId.js';
 import { errorHandlerMiddleware } from './middleware/errorHandler.js';
 import { healthRouter } from './routes/health.js';
+import { idempotencyRouter } from './routes/idempotency.js';
 import { NotFoundError, ForbiddenError } from './errors/index.js';
 
 const app = express();
@@ -31,6 +32,8 @@ app.use(requestIdMiddleware);
 
 // Mount routes
 app.use('/v1', healthRouter);
+app.use('/v1', idempotencyRouter);
+
 
 // Catch-all for undefined routes
 app.use((req, res, next) => {
