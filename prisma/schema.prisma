@@ -1,12 +1,10 @@
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  schemas  = ["public", "auth"]
 }
 
 generator client {
-  provider        = "prisma-client-js"
-  previewFeatures = ["multiSchema"]
+  provider = "prisma-client-js"
 }
 
 model WebhookEvent {
@@ -16,7 +14,6 @@ model WebhookEvent {
   receivedAt  DateTime @default(now())
 
   @@map("webhook_events")
-  @@schema("public")
 }
 
 model IdempotencyKey {
@@ -28,7 +25,6 @@ model IdempotencyKey {
   createdAt       DateTime @default(now()) @map("created_at")
 
   @@map("idempotency_keys")
-  @@schema("public")
 }
 
 model CallSession {
@@ -43,7 +39,6 @@ model CallSession {
   order         Order?    @relation("CallSessionOrder")
 
   @@map("call_sessions")
-  @@schema("public")
 }
 
 model USSDSession {
@@ -59,7 +54,6 @@ model USSDSession {
   order            Order?    @relation("USSDSessionOrder")
 
   @@map("ussd_sessions")
-  @@schema("public")
 }
 
 model Order {
@@ -87,7 +81,6 @@ model Order {
   fulfillments        VendorFulfillment[]
 
   @@map("orders")
-  @@schema("public")
 }
 
 model OrderItem {
@@ -101,7 +94,6 @@ model OrderItem {
   order              Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   @@map("order_items")
-  @@schema("public")
 }
 
 model Payment {
@@ -116,7 +108,6 @@ model Payment {
   externalref          String   @unique @map("external_ref")
 
   @@map("payments")
-  @@schema("public")
 }
 
 model VendorFulfillment {
@@ -134,7 +125,6 @@ model VendorFulfillment {
   disbursements         Disbursement[]
 
   @@map("vendor_fulfillments")
-  @@schema("public")
 }
 
 model Disbursement {
@@ -153,5 +143,4 @@ model Disbursement {
   vendorFulfillment    VendorFulfillment @relation(fields: [vendorFulfillmentId], references: [id], onDelete: Cascade)
 
   @@map("disbursements")
-  @@schema("public")
 }

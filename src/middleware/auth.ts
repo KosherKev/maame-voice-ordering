@@ -1,14 +1,14 @@
 import { Request, Response, NextFunction } from 'express';
+import { createRemoteJWKSet, jwtVerify, JWTPayload } from 'jose';
 import jwt from 'jsonwebtoken';
 import { env } from '../config/env.js';
 import { prisma } from '../db/prisma.js';
 import { UnauthorizedError, ForbiddenError } from '../errors/index.js';
 
-interface SupabaseJwtPayload {
-  sub: string; // auth.users.id
+interface SupabaseJwtPayload extends JWTPayload {
+  sub: string;
   email?: string;
   role?: string;
-  exp?: number;
 }
 
 declare global {
@@ -23,6 +23,12 @@ declare global {
   }
 }
 
+// JWKS set is created once and caches public keys with automatic refresh.
+// Handles ES256 and RS256 (Supabase's new JWT Signing Keys).
+const JWKS = createRemoteJWKSet(
+  new URL(`${env.SUPABASE_URL}/auth/v1/.well-known/jwks.json`)
+);
+
 export async function authMiddleware(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
 
@@ -32,15 +38,31 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
 
   const token = authHeader.split(' ')[1];
 
+  let decoded: SupabaseJwtPayload;
+
   try {
-    // Verify Supabase-issued token using the shared JWT secret
-    const decoded = jwt.verify(token, env.SUPABASE_JWT_SECRET) as SupabaseJwtPayload;
-
-    if (!decoded || !decoded.sub) {
-      return next(new UnauthorizedError('Invalid token payload'));
+    // 1. Try JWKS verification first (ES256 / RS256 — Supabase new JWT Signing Keys)
+    const { payload } = await jwtVerify(token, JWKS, {
+      issuer: `${env.SUPABASE_URL}/auth/v1`,
+      audience: 'authenticated',
+    });
+    decoded = payload as SupabaseJwtPayload;
+  } catch (jwksErr) {
+    // 2. Fall back to legacy HS256 symmetric secret verification
+    try {
+      const secretBuffer = Buffer.from(env.SUPABASE_JWT_SECRET, 'base64');
+      decoded = jwt.verify(token, secretBuffer) as SupabaseJwtPayload;
+    } catch (hs256Err) {
+      return next(new UnauthorizedError('Invalid or expired token'));
     }
+  }
 
-    // Query profiles table in public schema using raw query (profiles not in Prisma schema)
+  if (!decoded || !decoded.sub) {
+    return next(new UnauthorizedError('Invalid token payload'));
+  }
+
+  try {
+    // Look up profile in public schema for role information
     const profiles = await prisma.$queryRaw<Array<{ id: string; role: string }>>`
       SELECT id, role FROM public.profiles WHERE id = ${decoded.sub}::uuid LIMIT 1
     `;
@@ -51,7 +73,6 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
 
     const profile = profiles[0];
 
-    // Populate user context
     req.user = {
       id: profile.id,
       role: profile.role,
