@@ -13,7 +13,26 @@ export class OrdersController {
 
       const order = await paymentService.retryPayment(params.orderId, idempotencyKey);
 
-      res.status(200).json(order);
+      // Exclude internal-only fields from response
+      const responseData = {
+        ...order,
+        llmProviderUsed: req.user?.role === 'admin' ? order.llmProviderUsed : undefined,
+        payment: order.payment ? {
+          id: order.payment.id,
+          orderId: order.payment.orderId,
+          moolreTransactionId: order.payment.moolreTransactionId,
+          amountInPesewas: order.payment.amountInPesewas,
+          moolreFeeInPesewas: order.payment.moolreFeeInPesewas,
+          status: order.payment.status,
+          createdAt: order.payment.createdAt,
+        } : null,
+      };
+
+      if (responseData.llmProviderUsed === undefined) {
+        delete (responseData as any).llmProviderUsed;
+      }
+
+      res.status(200).json(responseData);
     } catch (err) {
       next(err);
     }

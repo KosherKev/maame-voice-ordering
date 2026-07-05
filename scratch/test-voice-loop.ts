@@ -4,6 +4,7 @@ import { env } from '../src/config/env.js';
 import { sweepAbandonedSessions } from '../src/jobs/sessionSweep.js';
 import { Server } from 'http';
 import jwt from 'jsonwebtoken';
+import { randomUUID } from 'crypto';
 
 // Helper to convert form body to urlencoded string
 function toFormBody(obj: any): string {
@@ -17,6 +18,8 @@ async function runTests() {
   const PORT = 3001;
   const testSessionId = 'test-voice-session-uuid-12345';
   const customerNumber = '+233240000000';
+  let idempotencyKey = '';
+  let retryFailKey = '';
   
   // Start server
   await new Promise<void>(resolve => {
@@ -490,7 +493,7 @@ async function runTests() {
       role: 'admin'
     }, env.SUPABASE_JWT_SECRET, { expiresIn: '1h' });
 
-    const idempotencyKey = '22222222-2222-2222-2222-222222222222';
+    idempotencyKey = randomUUID();
 
     // Verify retry-payment succeeds
     const retryRes = await fetch(`http://localhost:${PORT}/v1/orders/${testOrder.id}/retry-payment`, {
@@ -524,12 +527,13 @@ async function runTests() {
     }
 
     // Verify calling retry-payment again (not in payment_failed status) returns 422
+    retryFailKey = randomUUID();
     const retryFailRes = await fetch(`http://localhost:${PORT}/v1/orders/${testOrder.id}/retry-payment`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${mockToken}`,
-        'idempotency-key': '33333333-3333-3333-3333-333333333333'
+        'idempotency-key': retryFailKey
       }
     });
 
@@ -550,6 +554,9 @@ async function runTests() {
     const mockUserId = '11111111-1111-1111-1111-111111111111';
     await prisma.$executeRawUnsafe(`DELETE FROM public.profiles WHERE id = '${mockUserId}'::uuid`).catch(() => {});
     await prisma.$executeRawUnsafe(`DELETE FROM auth.users WHERE id = '${mockUserId}'::uuid`).catch(() => {});
+    await prisma.idempotencyKey.deleteMany({
+      where: { key: { in: [idempotencyKey, retryFailKey].filter(Boolean) } }
+    }).catch(() => {});
 
     await prisma.payment.deleteMany({
       where: { order: { customerPhone: customerNumber } }
