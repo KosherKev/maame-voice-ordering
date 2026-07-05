@@ -42,10 +42,10 @@ Sequential phases, each building on the last. No phase starts until the previous
 
 **Goal**: the ~30-item catalog exists and can be managed without any custom backend code for this module.
 
-- [ ] `vendors`, `products` tables + migrations, created directly in Supabase (via Supabase CLI migrations, not Prisma — these tables are outside Prisma's schema per Phase 0)
-- [ ] Enable Row Level Security on both tables; write and test the policies from contract §5.2 (staff can read/write, single role in v1)
-- [ ] `before delete` trigger on `vendors` blocking hard-delete if the vendor has any `order_items` (forces the frontend to deactivate instead — contract §5.2)
-- [ ] Seed script populating the initial ~30 products across a handful of vendors (direct SQL or Supabase Admin API, run once)
+- [x] `vendors`, `products` tables + migrations, created directly in Supabase (via Supabase CLI migrations, not Prisma — these tables are outside Prisma's schema per Phase 0)
+- [x] Enable Row Level Security on both tables; write and test the policies from contract §5.2 (staff can read/write, single role in v1)
+- [x] `before delete` trigger on `vendors` blocking hard-delete if the vendor has any `order_items` (forces the frontend to deactivate instead — contract §5.2)
+- [x] Seed script populating the initial ~30 products across a handful of vendors (direct SQL or Supabase Admin API, run once)
 - [ ] Minimal admin frontend: Vendor Management page, Product Catalog page, calling Supabase's auto-generated REST API directly via `supabase-js` — no custom API client layer for this module (contract §6)
 
 **Acceptance criteria**: vendors and products can be created, listed, updated, and deactivated from the frontend calling Supabase directly, with zero custom Express code involved; attempting to hard-delete a vendor with existing orders is blocked by the database trigger; an unauthenticated request to the Supabase REST endpoint for either table is rejected by RLS, not by any custom middleware (there is none here).
