@@ -3,6 +3,7 @@ import { prisma } from '../src/db/prisma.js';
 import { env } from '../src/config/env.js';
 import { sweepAbandonedSessions } from '../src/jobs/sessionSweep.js';
 import { Server } from 'http';
+import jwt from 'jsonwebtoken';
 
 // Helper to convert form body to urlencoded string
 function toFormBody(obj: any): string {
@@ -62,6 +63,15 @@ async function runTests() {
       
       if (urlStr.includes('/v1/tts/synthesize')) {
         return new Response(Buffer.from('mock-audio-bytes'), { status: 200 });
+      }
+      
+      if (urlStr.includes('/open/transact/payment')) {
+        return new Response(JSON.stringify({
+          status: 1,
+          code: 'TR099',
+          message: null,
+          data: 'mock-moolre-tx-id-12345'
+        }), { status: 200 });
       }
       
       if (urlStr.includes('generativelanguage.googleapis.com') || urlStr.includes('api.anthropic.com')) {
@@ -273,19 +283,285 @@ async function runTests() {
     }
     console.log('✅ TEST 6 PASSED');
 
+    console.log('\n--- TEST 7: Voice Session Confirm -> initiatePayment & Hangup ---');
+    const testSessionId2 = 'test-voice-session-uuid-56789';
+    
+    // 1. Create CallSession first to satisfy foreign key constraint
+    await prisma.callSession.create({
+      data: {
+        id: testSessionId2,
+        customerPhone: customerNumber,
+        status: 'active',
+        transcript: []
+      }
+    });
+
+    // 2. Seed order in confirming_order status referencing CallSession
+    const testOrder = await prisma.order.create({
+      data: {
+        customerPhone: customerNumber,
+        channel: 'voice',
+        status: 'confirming_order',
+        totalInPesewas: 2300,
+        serviceFeeInPesewas: 800,
+        callSessionId: testSessionId2,
+        llmProviderUsed: env.LLM_PROVIDER,
+      }
+    });
+
+    // 3. Link CallSession to the created order
+    await prisma.callSession.update({
+      where: { id: testSessionId2 },
+      data: { orderId: testOrder.id }
+    });
+
+    // 4. Seed an order item to pass basket validation
+    await prisma.orderItem.create({
+      data: {
+        orderId: testOrder.id,
+        productId: waakyeProduct[0].id,
+        vendorId: waakyeProduct[0].vendorId,
+        quantity: 1,
+        unitPriceInPesewas: 1500
+      }
+    });
+
+    mockAsrText = 'Yes';
+    mockLlmDecision = {
+      intent: 'confirm_order',
+      matchedItems: [],
+      clarifyingQuestion: null,
+      orderSummaryText: null
+    };
+
+    const confirmYesRes = await fetch(`http://localhost:${PORT}/v1/webhooks/voice/inbound?key=${env.WEBHOOK_SHARED_SECRET}&action=process_speech`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: toFormBody({
+        sessionId: testSessionId2,
+        callerNumber: customerNumber,
+        isActive: '1',
+        recordingUrl: 'http://example.com/recording.mp3'
+      })
+    });
+
+    console.log('Response Status:', confirmYesRes.status);
+    const confirmYesXml = await confirmYesRes.text();
+    console.log('Response XML:\n', confirmYesXml);
+
+    if (confirmYesRes.status !== 200 || !confirmYesXml.includes('<Hangup/>') || !confirmYesXml.includes('Medaase')) {
+      throw new Error('TEST 7 FAILED: Order confirmation yes did not result in Hangup XML.');
+    }
+
+    // Give it a tiny moment to ensure async payment initiation runs
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    // Verify order is now awaiting_payment
+    const orderAwaitingPayment = await prisma.order.findUnique({
+      where: { id: testOrder.id },
+      include: { payment: true }
+    });
+
+    console.log('Order status:', orderAwaitingPayment?.status);
+    console.log('Payment status:', orderAwaitingPayment?.payment?.status);
+    console.log('Payment externalref:', orderAwaitingPayment?.payment?.externalref);
+
+    if (!orderAwaitingPayment || orderAwaitingPayment.status !== 'awaiting_payment') {
+      throw new Error('TEST 7 FAILED: Order status is not awaiting_payment.');
+    }
+    if (!orderAwaitingPayment.payment || orderAwaitingPayment.payment.status !== 'pending' || !orderAwaitingPayment.payment.externalref) {
+      throw new Error('TEST 7 FAILED: Pending Payment record not created or has invalid fields.');
+    }
+    console.log('✅ TEST 7 PASSED');
+
+    console.log('\n--- TEST 8: Moolre Success Webhook ---');
+    const payment = orderAwaitingPayment.payment;
+    
+    const webhookSuccessRes = await fetch(`http://localhost:${PORT}/v1/webhooks/moolre/payment?key=${env.WEBHOOK_SHARED_SECRET}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        status: 1,
+        code: 'P01',
+        message: 'Transaction Successful',
+        data: {
+          externalref: payment.externalref,
+          transactionid: 'moolre-success-tx-777',
+          amount: '23.00',
+          fee: '0.23'
+        }
+      })
+    });
+
+    console.log('Webhook Response Status:', webhookSuccessRes.status);
+    if (webhookSuccessRes.status !== 200) {
+      throw new Error('TEST 8 FAILED: Webhook endpoint did not return 200.');
+    }
+
+    const orderAfterSuccess = await prisma.order.findUnique({
+      where: { id: testOrder.id },
+      include: { payment: true }
+    });
+
+    console.log('Order status:', orderAfterSuccess?.status);
+    console.log('Payment status:', orderAfterSuccess?.payment?.status);
+    console.log('Payment fee:', orderAfterSuccess?.payment?.moolreFeeInPesewas);
+
+    if (orderAfterSuccess?.status !== 'paid' || orderAfterSuccess?.payment?.status !== 'success' || orderAfterSuccess?.payment?.moolreFeeInPesewas !== 23) {
+      throw new Error('TEST 8 FAILED: Order or Payment state did not update correctly after success webhook.');
+    }
+    console.log('✅ TEST 8 PASSED');
+
+    console.log('\n--- TEST 9: Moolre Failure Webhook ---');
+    // Transition back to awaiting_payment to simulate another payment/failure
+    await prisma.order.update({
+      where: { id: testOrder.id },
+      data: { status: 'awaiting_payment' }
+    });
+
+    const webhookFailRes = await fetch(`http://localhost:${PORT}/v1/webhooks/moolre/payment?key=${env.WEBHOOK_SHARED_SECRET}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        status: 0,
+        code: 'P02',
+        message: 'Insufficient Funds',
+        data: {
+          externalref: payment.externalref,
+          transactionid: 'moolre-fail-tx-888',
+          amount: '23.00'
+        }
+      })
+    });
+
+    console.log('Webhook Response Status:', webhookFailRes.status);
+    if (webhookFailRes.status !== 200) {
+      throw new Error('TEST 9 FAILED: Webhook endpoint did not return 200.');
+    }
+
+    const orderAfterFail = await prisma.order.findUnique({
+      where: { id: testOrder.id },
+      include: { payment: true }
+    });
+
+    console.log('Order status:', orderAfterFail?.status);
+    console.log('Payment status:', orderAfterFail?.payment?.status);
+
+    if (orderAfterFail?.status !== 'payment_failed' || orderAfterFail?.payment?.status !== 'failed') {
+      throw new Error('TEST 9 FAILED: Order or Payment state did not update correctly after failure webhook.');
+    }
+    console.log('✅ TEST 9 PASSED');
+
+    console.log('\n--- TEST 10: Retry Payment ---');
+    // 1. Resolve profile for auth (query existing or seed a mock in auth.users)
+    const authUsers = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM auth.users LIMIT 1
+    `;
+    let mockUserId: string;
+
+    if (authUsers && authUsers.length > 0) {
+      mockUserId = authUsers[0].id;
+      // Make sure profile exists and has role admin
+      await prisma.$executeRawUnsafe(`
+        INSERT INTO public.profiles (id, role)
+        VALUES ('${mockUserId}', 'admin')
+        ON CONFLICT (id) DO UPDATE SET role = 'admin'
+      `);
+    } else {
+      mockUserId = '11111111-1111-1111-1111-111111111111';
+      console.log('Seeding mock user in auth.users...');
+      await prisma.$executeRawUnsafe(`
+        INSERT INTO auth.users (id, email)
+        VALUES ('${mockUserId}'::uuid, 'admin@example.com')
+        ON CONFLICT (id) DO NOTHING
+      `);
+      // Update profile created by trigger to have admin role (defaults to admin, but force it)
+      await prisma.$executeRawUnsafe(`
+        INSERT INTO public.profiles (id, role)
+        VALUES ('${mockUserId}', 'admin')
+        ON CONFLICT (id) DO UPDATE SET role = 'admin'
+      `);
+    }
+
+    // 2. Generate valid JWT token
+    const mockToken = jwt.sign({
+      sub: mockUserId,
+      email: 'admin@example.com',
+      role: 'admin'
+    }, env.SUPABASE_JWT_SECRET, { expiresIn: '1h' });
+
+    const idempotencyKey = '22222222-2222-2222-2222-222222222222';
+
+    // Verify retry-payment succeeds
+    const retryRes = await fetch(`http://localhost:${PORT}/v1/orders/${testOrder.id}/retry-payment`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${mockToken}`,
+        'idempotency-key': idempotencyKey
+      }
+    });
+
+    console.log('Retry Response Status:', retryRes.status);
+    const retryBody = await retryRes.json() as any;
+    console.log('Retry Response Body:', retryBody);
+
+    if (retryRes.status !== 200) {
+      throw new Error('TEST 10 FAILED: Retry payment endpoint failed.');
+    }
+
+    const orderAfterRetry = await prisma.order.findUnique({
+      where: { id: testOrder.id },
+      include: { payment: true }
+    });
+
+    console.log('Order status:', orderAfterRetry?.status);
+    console.log('Payment status:', orderAfterRetry?.payment?.status);
+    console.log('Payment externalref (should be idempotency-key):', orderAfterRetry?.payment?.externalref);
+
+    if (orderAfterRetry?.status !== 'awaiting_payment' || orderAfterRetry?.payment?.status !== 'pending' || orderAfterRetry?.payment?.externalref !== idempotencyKey) {
+      throw new Error('TEST 10 FAILED: Retry payment did not transition state or set externalref correctly.');
+    }
+
+    // Verify calling retry-payment again (not in payment_failed status) returns 422
+    const retryFailRes = await fetch(`http://localhost:${PORT}/v1/orders/${testOrder.id}/retry-payment`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${mockToken}`,
+        'idempotency-key': '33333333-3333-3333-3333-333333333333'
+      }
+    });
+
+    console.log('Retry on Awaiting Payment Status:', retryFailRes.status);
+    const retryFailBody = await retryFailRes.json() as any;
+    console.log('Retry on Awaiting Payment Body:', retryFailBody);
+
+    if (retryFailRes.status !== 422 || retryFailBody.type !== 'https://api.maame.app/problems/invalid-state-transition') {
+      throw new Error('TEST 10 FAILED: Retry payment on non-payment_failed order did not reject with 422.');
+    }
+    console.log('✅ TEST 10 PASSED');
+
     // Restore fetch
     global.fetch = originalFetch;
 
   } finally {
     // Cleanup test data
+    const mockUserId = '11111111-1111-1111-1111-111111111111';
+    await prisma.$executeRawUnsafe(`DELETE FROM public.profiles WHERE id = '${mockUserId}'::uuid`).catch(() => {});
+    await prisma.$executeRawUnsafe(`DELETE FROM auth.users WHERE id = '${mockUserId}'::uuid`).catch(() => {});
+
+    await prisma.payment.deleteMany({
+      where: { order: { customerPhone: customerNumber } }
+    });
     await prisma.orderItem.deleteMany({
-      where: { order: { callSessionId: testSessionId } }
+      where: { order: { customerPhone: customerNumber } }
     });
     await prisma.order.deleteMany({
-      where: { callSessionId: testSessionId }
+      where: { customerPhone: customerNumber }
     });
     await prisma.callSession.deleteMany({
-      where: { id: testSessionId }
+      where: { customerPhone: customerNumber }
     });
 
     // Close server

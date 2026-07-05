@@ -83,6 +83,7 @@ model Order {
   ussdSession         USSDSession? @relation("USSDSessionOrder", fields: [ussdSessionId], references: [id], onDelete: Cascade)
 
   orderItems          OrderItem[]
+  payment             Payment?
 
   @@map("orders")
   @@schema("public")
@@ -99,5 +100,20 @@ model OrderItem {
   order              Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   @@map("order_items")
+  @@schema("public")
+}
+
+model Payment {
+  id                   String   @id @default(uuid())
+  orderId              String   @unique @map("order_id")
+  order                Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  moolreTransactionId  String?  @map("moolre_transaction_id")
+  amountInPesewas      Int      @map("amount_in_pesewas")
+  moolreFeeInPesewas   Int?     @map("moolre_fee_in_pesewas")
+  status               String   // "pending" | "success" | "failed"
+  createdAt            DateTime @default(now()) @map("created_at")
+  externalref          String   @unique @map("external_ref")
+
+  @@map("payments")
   @@schema("public")
 }

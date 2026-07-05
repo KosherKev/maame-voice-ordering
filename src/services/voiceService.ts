@@ -1,7 +1,8 @@
 import { prisma } from '../db/prisma.js';
 import { env } from '../config/env.js';
-import { asrClient, ttsClient, llmClient } from '../integrations/index.js';
-import { NotFoundError, InvalidStateTransitionError, UpstreamProviderError } from '../errors/index.js';
+import { asrClient, llmClient } from '../integrations/index.js';
+import { NotFoundError } from '../errors/index.js';
+import { paymentService } from './paymentService.js';
 
 export interface InboundCallParams {
   sessionId: string;
@@ -126,10 +127,11 @@ export class VoiceService {
       case 'cancel':
         return this.handleOrderCancel(sessionId, currentOrder?.id);
 
-      case 'ask_clarification':
+      case 'ask_clarification': {
         const clarQuestion = decision.clarifyingQuestion || 'Could you please repeat that?';
         await this.appendTranscript(sessionId, 'maame', clarQuestion);
         return this.generateRecordXml(clarQuestion, sessionId);
+      }
 
       case 'add_item':
       case 'remove_item':
@@ -294,17 +296,40 @@ export class VoiceService {
       return this.generateRecordXml(failText, sessionId);
     }
 
-    // Transition state to confirming_order
-    await prisma.order.update({
-      where: { id: currentOrder.id },
-      data: { status: 'confirming_order' },
-    });
+    // Check if the order is already in confirming_order status (meaning customer is saying Yes to the summary)
+    if (currentOrder.status === 'confirming_order') {
+      const paymentText = 'Medaase! Thank you. I have sent a Mobile Money payment prompt to your phone. Please approve the prompt to complete your order. Goodbye!';
+      await this.appendTranscript(sessionId, 'maame', paymentText);
 
-    const confirmText = decision.orderSummaryText 
-      || `Excellent. Your order total is ${currentOrder.totalInPesewas / 100} Cedis, including service fee. Please say Yes to confirm and pay, or say Cancel to start over.`;
+      // Fire and forget payment initiation
+      paymentService.initiateVoiceOrderPayment(currentOrder.id).catch(err => {
+        console.error('Failed to initiate payment for voice order:', err);
+      });
 
-    await this.appendTranscript(sessionId, 'maame', confirmText);
-    return this.generateRecordXml(confirmText, sessionId);
+      // Update CallSession status to completed
+      await prisma.callSession.update({
+        where: { id: sessionId },
+        data: {
+          status: 'completed',
+          endedAt: new Date(),
+        },
+      });
+
+      return this.generateHangupXml(paymentText);
+    } else {
+      // First confirmation prompt
+      // Transition state to confirming_order
+      await prisma.order.update({
+        where: { id: currentOrder.id },
+        data: { status: 'confirming_order' },
+      });
+
+      const confirmText = decision.orderSummaryText 
+        || `Excellent. Your order total is ${currentOrder.totalInPesewas / 100} Cedis, including service fee. Please say Yes to confirm and pay, or say Cancel to start over.`;
+
+      await this.appendTranscript(sessionId, 'maame', confirmText);
+      return this.generateRecordXml(confirmText, sessionId);
+    }
   }
 
   /**
@@ -407,9 +432,8 @@ export class VoiceService {
   /**
    * Helper to generate Africa's Talking `<Record>` response XML
    */
-  private generateRecordXml(text: string, sessionId: string): string {
+  private generateRecordXml(text: string, _sessionId: string): string {
     const encodedText = encodeURIComponent(text);
-    const playUrl = `https://qsxgkxtoustcfeotekng.supabase.co/rest/v1/v1/tts/play?text=${encodedText}`; 
     // Wait, the API endpoint is configured on the backend, let's use the relative path if AT supports it or absolute.
     // In our controller, we will construct the correct absolute URL using the incoming Host header!
     // For now, we will return a placeholder URL pattern that the controller replaces with the real request host.

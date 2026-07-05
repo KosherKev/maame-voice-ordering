@@ -5,6 +5,7 @@ import { errorHandlerMiddleware } from './middleware/errorHandler.js';
 import { healthRouter } from './routes/health.js';
 import { idempotencyRouter } from './routes/idempotency.js';
 import { voiceRouter } from './routes/voice.js';
+import { ordersRouter } from './routes/orders.js';
 import { NotFoundError, ForbiddenError } from './errors/index.js';
 
 const app = express();
@@ -35,6 +36,7 @@ app.use(requestIdMiddleware);
 app.use('/v1', healthRouter);
 app.use('/v1', idempotencyRouter);
 app.use('/v1', voiceRouter);
+app.use('/v1', ordersRouter);
 
 
 

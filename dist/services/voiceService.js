@@ -5,6 +5,7 @@ const prisma_js_1 = require("../db/prisma.js");
 const env_js_1 = require("../config/env.js");
 const index_js_1 = require("../integrations/index.js");
 const index_js_2 = require("../errors/index.js");
+const paymentService_js_1 = require("./paymentService.js");
 class VoiceService {
     /**
      * Main entry point to process voice channel conversational state turns.
@@ -99,10 +100,11 @@ class VoiceService {
         switch (decision.intent) {
             case 'cancel':
                 return this.handleOrderCancel(sessionId, currentOrder?.id);
-            case 'ask_clarification':
+            case 'ask_clarification': {
                 const clarQuestion = decision.clarifyingQuestion || 'Could you please repeat that?';
                 await this.appendTranscript(sessionId, 'maame', clarQuestion);
                 return this.generateRecordXml(clarQuestion, sessionId);
+            }
             case 'add_item':
             case 'remove_item':
                 return this.handleBasketUpdate(sessionId, callerNumber, currentOrder, decision, catalog);
@@ -243,15 +245,36 @@ class VoiceService {
             await this.appendTranscript(sessionId, 'maame', failText);
             return this.generateRecordXml(failText, sessionId);
         }
-        // Transition state to confirming_order
-        await prisma_js_1.prisma.order.update({
-            where: { id: currentOrder.id },
-            data: { status: 'confirming_order' },
-        });
-        const confirmText = decision.orderSummaryText
-            || `Excellent. Your order total is ${currentOrder.totalInPesewas / 100} Cedis, including service fee. Please say Yes to confirm and pay, or say Cancel to start over.`;
-        await this.appendTranscript(sessionId, 'maame', confirmText);
-        return this.generateRecordXml(confirmText, sessionId);
+        // Check if the order is already in confirming_order status (meaning customer is saying Yes to the summary)
+        if (currentOrder.status === 'confirming_order') {
+            const paymentText = 'Medaase! Thank you. I have sent a Mobile Money payment prompt to your phone. Please approve the prompt to complete your order. Goodbye!';
+            await this.appendTranscript(sessionId, 'maame', paymentText);
+            // Fire and forget payment initiation
+            paymentService_js_1.paymentService.initiateVoiceOrderPayment(currentOrder.id).catch(err => {
+                console.error('Failed to initiate payment for voice order:', err);
+            });
+            // Update CallSession status to completed
+            await prisma_js_1.prisma.callSession.update({
+                where: { id: sessionId },
+                data: {
+                    status: 'completed',
+                    endedAt: new Date(),
+                },
+            });
+            return this.generateHangupXml(paymentText);
+        }
+        else {
+            // First confirmation prompt
+            // Transition state to confirming_order
+            await prisma_js_1.prisma.order.update({
+                where: { id: currentOrder.id },
+                data: { status: 'confirming_order' },
+            });
+            const confirmText = decision.orderSummaryText
+                || `Excellent. Your order total is ${currentOrder.totalInPesewas / 100} Cedis, including service fee. Please say Yes to confirm and pay, or say Cancel to start over.`;
+            await this.appendTranscript(sessionId, 'maame', confirmText);
+            return this.generateRecordXml(confirmText, sessionId);
+        }
     }
     /**
      * Handles user explicitly requesting to cancel the order.
@@ -337,9 +360,8 @@ class VoiceService {
     /**
      * Helper to generate Africa's Talking `<Record>` response XML
      */
-    generateRecordXml(text, sessionId) {
+    generateRecordXml(text, _sessionId) {
         const encodedText = encodeURIComponent(text);
-        const playUrl = `https://qsxgkxtoustcfeotekng.supabase.co/rest/v1/v1/tts/play?text=${encodedText}`;
         // Wait, the API endpoint is configured on the backend, let's use the relative path if AT supports it or absolute.
         // In our controller, we will construct the correct absolute URL using the incoming Host header!
         // For now, we will return a placeholder URL pattern that the controller replaces with the real request host.

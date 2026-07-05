@@ -1,0 +1,41 @@
+import { Router, Request, Response, NextFunction } from 'express';
+import { OrdersController } from '../controllers/ordersController.js';
+import { WebhookController } from '../controllers/webhookController.js';
+import { authMiddleware } from '../middleware/auth.js';
+import { idempotencyMiddleware } from '../middleware/idempotency.js';
+import { env } from '../config/env.js';
+import { WebhookSignatureInvalidError } from '../errors/index.js';
+
+const router = Router();
+const ordersController = new OrdersController();
+const webhookController = new WebhookController();
+
+/**
+ * Middleware to verify Moolre / Africa's Talking shared secret query parameter
+ */
+function verifyWebhookSecret(req: Request, res: Response, next: NextFunction) {
+  const { key } = req.query;
+
+  if (!key || key !== env.WEBHOOK_SHARED_SECRET) {
+    return next(new WebhookSignatureInvalidError('Unauthorized webhook access: invalid or missing secret key'));
+  }
+  next();
+}
+
+// Mutating Order payment retry endpoint - requires auth and idempotency check
+router.post(
+  '/orders/:orderId/retry-payment',
+  authMiddleware,
+  idempotencyMiddleware,
+  ordersController.retryPayment
+);
+
+// Webhook endpoint for Moolre payment callbacks - requires query parameter key check
+router.post(
+  '/webhooks/moolre/payment',
+  verifyWebhookSecret,
+  webhookController.handleMoolrePayment
+);
+
+export const ordersRouter = router;
+export default ordersRouter;

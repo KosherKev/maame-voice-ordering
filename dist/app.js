@@ -11,6 +11,7 @@ const errorHandler_js_1 = require("./middleware/errorHandler.js");
 const health_js_1 = require("./routes/health.js");
 const idempotency_js_1 = require("./routes/idempotency.js");
 const voice_js_1 = require("./routes/voice.js");
+const orders_js_1 = require("./routes/orders.js");
 const index_js_1 = require("./errors/index.js");
 const app = (0, express_1.default)();
 exports.app = app;
@@ -36,6 +37,7 @@ app.use(requestId_js_1.requestIdMiddleware);
 app.use('/v1', health_js_1.healthRouter);
 app.use('/v1', idempotency_js_1.idempotencyRouter);
 app.use('/v1', voice_js_1.voiceRouter);
+app.use('/v1', orders_js_1.ordersRouter);
 // Catch-all for undefined routes
 app.use((req, res, next) => {
     next(new index_js_1.NotFoundError(`Route ${req.method} ${req.originalUrl} not found`));
