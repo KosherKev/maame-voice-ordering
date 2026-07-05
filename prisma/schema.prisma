@@ -1,10 +1,12 @@
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  schemas  = ["public", "auth"]
 }
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
 }
 
 model WebhookEvent {
@@ -14,6 +16,7 @@ model WebhookEvent {
   receivedAt  DateTime @default(now())
 
   @@map("webhook_events")
+  @@schema("public")
 }
 
 model IdempotencyKey {
@@ -25,4 +28,76 @@ model IdempotencyKey {
   createdAt       DateTime @default(now()) @map("created_at")
 
   @@map("idempotency_keys")
+  @@schema("public")
+}
+
+model CallSession {
+  id            String    @id @default(uuid())
+  customerPhone String    @map("customer_phone")
+  status        String    // "active" | "completed" | "abandoned"
+  orderId       String?   @unique @map("order_id")
+  transcript    Json      @default("[]") // Array of { speaker: string, text: string, timestamp: string }
+  createdAt     DateTime  @default(now()) @map("created_at")
+  endedAt       DateTime? @map("ended_at")
+
+  order         Order?    @relation("CallSessionOrder")
+
+  @@map("call_sessions")
+  @@schema("public")
+}
+
+model USSDSession {
+  id               String    @id @default(uuid())
+  customerPhone    String    @map("customer_phone")
+  sessionIdMoolre  String    @map("session_id_moolre")
+  status           String    // "active" | "completed" | "abandoned"
+  orderId          String?   @unique @map("order_id")
+  menuState        String    @map("menu_state")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  endedAt          DateTime? @map("ended_at")
+
+  order            Order?    @relation("USSDSessionOrder")
+
+  @@map("ussd_sessions")
+  @@schema("public")
+}
+
+model Order {
+  id                  String       @id @default(uuid())
+  customerPhone       String       @map("customer_phone")
+  channel             String       // "voice" | "ussd"
+  status              String       // collecting_items | confirming_order | awaiting_payment | paid | ...
+  totalInPesewas      Int          @map("total_in_pesewas")
+  serviceFeeInPesewas Int          @map("service_fee_in_pesewas")
+  createdAt           DateTime     @default(now()) @map("created_at")
+  updatedAt           DateTime     @updatedAt @map("updated_at")
+  
+  // Debugging/internal fields
+  llmProviderUsed     String?      @map("llm_provider_used")
+
+  // Relationships
+  callSessionId       String?      @unique @map("call_session_id")
+  callSession         CallSession? @relation("CallSessionOrder", fields: [callSessionId], references: [id], onDelete: Cascade)
+  
+  ussdSessionId       String?      @unique @map("ussd_session_id")
+  ussdSession         USSDSession? @relation("USSDSessionOrder", fields: [ussdSessionId], references: [id], onDelete: Cascade)
+
+  orderItems          OrderItem[]
+
+  @@map("orders")
+  @@schema("public")
+}
+
+model OrderItem {
+  id                 String   @id @default(uuid())
+  orderId            String   @map("order_id")
+  productId          String   @db.Uuid @map("product_id")
+  vendorId           String   @db.Uuid @map("vendor_id")
+  quantity           Int
+  unitPriceInPesewas Int      @map("unit_price_in_pesewas")
+
+  order              Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("order_items")
+  @@schema("public")
 }

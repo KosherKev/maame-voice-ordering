@@ -56,13 +56,13 @@ Sequential phases, each building on the last. No phase starts until the previous
 
 **Goal**: a real phone call turns into a matched, spoken-back, confirmed order.
 
-- [ ] **Before writing code**: resolve Gap G-6 (confirm Africa's Talking's real-time audio-streaming webhook shape against a live AT account/dashboard) and Gap G-8 (confirm Khaya's raw ASR/TTS request-response JSON against the live developer portal)
-- [ ] `CallSession` model + migration
-- [ ] `POST /v1/webhooks/voice/inbound` receiver with shared-secret + IP-allowlist verification (Gap G-9)
-- [ ] `AsrClient` / `TtsClient` interfaces wrapping the confirmed Khaya shape — no Khaya-specific code outside these two files
-- [ ] `LlmClient` interface with two implementations (`ClaudeLlmClient`, `GeminiLlmClient`) selected via `LLM_PROVIDER`, both producing the structured decision shape from contract §7.3
-- [ ] `Order`, `OrderItem` models + migrations; order state machine `collecting_items → confirming_order` (contract §9)
-- [ ] Abandoned-session sweep background job (Gap G-4): idle sessions past a configurable timeout (default 90s) move to `abandoned`
+- [x] **Before writing code**: resolve Gap G-6 (confirm Africa's Talking's real-time audio-streaming webhook shape against a live AT account/dashboard) and Gap G-8 (confirm Khaya's raw ASR/TTS request-response JSON against the live developer portal)
+- [x] `CallSession` model + migration
+- [x] `POST /v1/webhooks/voice/inbound` receiver with shared-secret + IP-allowlist verification (Gap G-9)
+- [x] `AsrClient` / `TtsClient` interfaces wrapping the confirmed Khaya shape — no Khaya-specific code outside these two files
+- [x] `LlmClient` interface with two implementations (`ClaudeLlmClient`, `GeminiLlmClient`) selected via `LLM_PROVIDER`, both producing the structured decision shape from contract §7.3
+- [x] `Order`, `OrderItem` models + migrations; order state machine `collecting_items → confirming_order` (contract §9)
+- [x] Abandoned-session sweep background job (Gap G-4): idle sessions past a configurable timeout (default 90s) move to `abandoned`
 
 **Acceptance criteria**: a real test call to the AT number transcribes Twi and English speech, matches spoken items against the seeded catalog, reads back a spoken order summary via TTS, and produces an `Order` row in `confirming_order` state; leaving a call idle past the timeout auto-marks it `abandoned` without manual intervention.
 
