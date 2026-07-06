@@ -18,18 +18,18 @@ const app = express();
 // CORS implementation: Env-driven explicit allowlist, no wildcards (contract §10)
 const allowedOrigins = env.ALLOWED_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean);
 
-// app.use(
-//   cors({
-//     origin: (origin, callback) => {
-//       if (!origin || allowedOrigins.indexOf(origin) !== -1) {
-//         callback(null, true);
-//       } else {
-//         callback(new ForbiddenError('Origin not allowed by CORS'));
-//       }
-//     },
-//     credentials: true,
-//   }),
-// );
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+        callback(null, true);
+      } else {
+        callback(new ForbiddenError('Origin not allowed by CORS'));
+      }
+    },
+    credentials: true,
+  }),
+);
 
 app.use(express.json());
 app.use(requestIdMiddleware);

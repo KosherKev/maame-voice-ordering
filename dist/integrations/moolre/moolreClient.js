@@ -31,9 +31,10 @@ class MoolreClient {
             }
         }
         catch (err) {
-            console.warn('Failed to decode MOOLRE_PUBKEY JWT to extract userid:', err);
+            // Fall through to the error below
         }
-        return '108590'; // Sandbox/fallback user ID
+        // A-2 fix: never silently fall back to a hardcoded sandbox ID in production
+        throw new Error('Failed to decode MOOLRE_PUBKEY JWT to extract userid — check the env var value');
     }
     getMoolreChannel(phoneNumber) {
         // Normalize number to extract prefix
@@ -191,7 +192,10 @@ class MoolreClient {
                 throw new Error(`HTTP ${response.status}: ${errorText}`);
             }
             const responseBody = (await response.json());
-            console.log(`Moolre status check response for ${externalRef}:`, JSON.stringify(responseBody));
+            // A-1: Only log full Moolre response in development mode (contract §10 — no raw upstream data in prod logs)
+            if (env_js_1.env.NODE_ENV === 'development') {
+                console.log(`Moolre status check response for ${externalRef}:`, JSON.stringify(responseBody));
+            }
             const rootStatus = Number(responseBody.status);
             const code = responseBody.code;
             const data = responseBody.data;

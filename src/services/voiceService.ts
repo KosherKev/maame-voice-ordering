@@ -3,6 +3,13 @@ import { env } from '../config/env.js';
 import { asrClient, llmClient } from '../integrations/index.js';
 import { NotFoundError } from '../errors/index.js';
 import { paymentService } from './paymentService.js';
+import { Prisma } from '@prisma/client';
+
+export interface TranscriptEntry {
+  speaker: 'customer' | 'maame';
+  text: string;
+  timestamp: string;
+}
 
 export interface InboundCallParams {
   sessionId: string;
@@ -112,7 +119,7 @@ export class VoiceService {
       : [];
 
     // 3. Process transcription via LLM matching
-    const decision = await llmClient.processSpeech(catalog, basket, updatedTranscript as any, transcription);
+    const decision = await llmClient.processSpeech(catalog, basket, updatedTranscript, transcription);
 
     // Record the LLM provider used in order if order exists
     if (currentOrder && !currentOrder.llmProviderUsed) {
@@ -396,14 +403,14 @@ export class VoiceService {
     sessionId: string,
     speaker: 'customer' | 'maame',
     text: string,
-  ): Promise<any[]> {
+  ): Promise<TranscriptEntry[]> {
     const session = await prisma.callSession.findUnique({
       where: { id: sessionId },
     });
 
     if (!session) return [];
 
-    const rawTranscript = (session.transcript as any) || [];
+    const rawTranscript = (session.transcript as unknown as TranscriptEntry[]) || [];
     const updated = [
       ...rawTranscript,
       { speaker, text, timestamp: new Date().toISOString() },
@@ -411,7 +418,7 @@ export class VoiceService {
 
     await prisma.callSession.update({
       where: { id: sessionId },
-      data: { transcript: updated },
+      data: { transcript: updated as unknown as Prisma.InputJsonValue },
     });
 
     return updated;
@@ -440,7 +447,7 @@ export class VoiceService {
     return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Play url="__HOST__/v1/tts/play?text=${encodedText}"/>
-  <Record maxLength="10" timeout="3" trimSilence="true" playBeep="true" callbackUrl="__HOST__/v1/webhooks/voice/inbound?key=${env.WEBHOOK_SHARED_SECRET}&amp;action=process_speech"/>
+  <Record maxLength="10" timeout="3" trimSilence="true" playBeep="true" callbackUrl="__HOST__/v1/webhooks/voice/inbound?key=${env.AT_WEBHOOK_SECRET}&amp;action=process_speech"/>
 </Response>`;
   }
 

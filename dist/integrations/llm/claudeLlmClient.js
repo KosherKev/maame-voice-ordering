@@ -91,7 +91,7 @@ New Customer Utterance:
                 const errorText = await response.text();
                 throw new Error(`Claude API returned status ${response.status}: ${errorText}`);
             }
-            const resultJson = await response.json();
+            const resultJson = (await response.json());
             const toolUseContent = resultJson.content?.find((c) => c.type === 'tool_use');
             if (!toolUseContent || !toolUseContent.input) {
                 throw new Error('Claude API did not return tool use structure');

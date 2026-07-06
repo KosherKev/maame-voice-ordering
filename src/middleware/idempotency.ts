@@ -66,37 +66,34 @@ export async function idempotencyMiddleware(req: Request, res: Response, next: N
   const originalSend = res.send;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   res.send = function (body): any {
-    const handleUpsertAndSend = async () => {
-      if (res.statusCode < 500) {
-        const responseBody = typeof body === 'string' ? body : JSON.stringify(body);
-        const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours TTL
+    // Call the original send synchronously to return response to client immediately
+    const result = originalSend.call(this, body);
 
-        try {
-          await prisma.idempotencyKey.upsert({
-            where: { key: idempotencyKey },
-            create: {
-              key: idempotencyKey,
-              requestBodyHash,
-              responseStatus: res.statusCode,
-              responseBody,
-              expiresAt,
-            },
-            update: {
-              requestBodyHash,
-              responseStatus: res.statusCode,
-              responseBody,
-              expiresAt,
-            },
-          });
-        } catch (err) {
-          console.error('Error writing to idempotency store:', err);
-        }
-      }
-      return originalSend.call(this, body);
-    };
+    if (res.statusCode < 500) {
+      const responseBody = typeof body === 'string' ? body : JSON.stringify(body);
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours TTL
 
-    handleUpsertAndSend();
-    return this;
+      prisma.idempotencyKey.upsert({
+        where: { key: idempotencyKey },
+        create: {
+          key: idempotencyKey,
+          requestBodyHash,
+          responseStatus: res.statusCode,
+          responseBody,
+          expiresAt,
+        },
+        update: {
+          requestBodyHash,
+          responseStatus: res.statusCode,
+          responseBody,
+          expiresAt,
+        },
+      }).catch((err) => {
+        console.error('Error writing to idempotency store:', err);
+      });
+    }
+
+    return result;
   };
 
   next();

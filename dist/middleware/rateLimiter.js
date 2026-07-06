@@ -10,7 +10,7 @@ exports.webhookRateLimiter = (0, express_rate_limit_1.default)({
     windowMs: 60 * 1000, // 1 minute
     max: 60,
     standardHeaders: true,
-    legacyHeaders: false,
+    legacyHeaders: true, // Emit X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset (contract §2)
     handler: (req, res, next) => {
         next(new index_js_1.RateLimitedError('Webhook rate limit exceeded.'));
     },
@@ -19,9 +19,9 @@ exports.adminRateLimiter = (0, express_rate_limit_1.default)({
     windowMs: 60 * 1000, // 1 minute
     max: 120,
     standardHeaders: true,
-    legacyHeaders: false,
+    legacyHeaders: true, // Emit X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset (contract §2)
     keyGenerator: (req) => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        // Rate limit per authenticated user (user is set by authMiddleware before this runs)
         const user = req.user;
         return user?.id || req.ip || 'unknown';
     },

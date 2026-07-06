@@ -190,8 +190,10 @@ class FulfillmentService {
     }
     /**
      * Background sweep task polling Moolre for pending disbursements status.
-     * Employs exponential backoff schedules.
+     * Employs exponential backoff with a hard cap at MAX_POLL_COUNT to prevent
+     * unbounded retry loops (Phase 8 hardening, G-3).
      */
+    static MAX_POLL_COUNT = 48; // ~24h of exponential backoff before giving up
     async pollPendingDisbursements() {
         const now = new Date();
         const pendingDisbursements = await prisma_js_1.prisma.disbursement.findMany({
@@ -251,16 +253,38 @@ class FulfillmentService {
                 else {
                     // Still pending: increment poll count and calculate backoff
                     const pollCount = disbursement.pollCount + 1;
-                    const delaySeconds = Math.min(30 * Math.pow(2, pollCount), 3600);
-                    const nextPollAt = new Date(Date.now() + delaySeconds * 1000);
-                    await prisma_js_1.prisma.disbursement.update({
-                        where: { id: disbursement.id },
-                        data: {
-                            pollCount,
-                            nextPollAt,
-                        },
-                    });
-                    console.log(`Disbursement ${disbursement.id} still pending, next check in ${delaySeconds}s`);
+                    // B-7: Cap polling to prevent unbounded retry loops
+                    if (pollCount >= FulfillmentService.MAX_POLL_COUNT) {
+                        console.error(`🚨 ALERT: Disbursement ${disbursement.id} exceeded max poll count (${FulfillmentService.MAX_POLL_COUNT}). ` +
+                            `Marking as failed — requires manual investigation. externalref: ${disbursement.externalref}`);
+                        await prisma_js_1.prisma.$transaction([
+                            prisma_js_1.prisma.disbursement.update({
+                                where: { id: disbursement.id },
+                                data: {
+                                    status: 'failed',
+                                    pollCount,
+                                },
+                            }),
+                            prisma_js_1.prisma.vendorFulfillment.update({
+                                where: { id: disbursement.vendorFulfillmentId },
+                                data: {
+                                    disbursementStatus: 'failed',
+                                },
+                            }),
+                        ]);
+                    }
+                    else {
+                        const delaySeconds = Math.min(30 * Math.pow(2, pollCount), 3600);
+                        const nextPollAt = new Date(Date.now() + delaySeconds * 1000);
+                        await prisma_js_1.prisma.disbursement.update({
+                            where: { id: disbursement.id },
+                            data: {
+                                pollCount,
+                                nextPollAt,
+                            },
+                        });
+                        console.log(`Disbursement ${disbursement.id} still pending (poll ${pollCount}/${FulfillmentService.MAX_POLL_COUNT}), next check in ${delaySeconds}s`);
+                    }
                 }
             }
             catch (err) {

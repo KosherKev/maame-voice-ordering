@@ -5,37 +5,35 @@ import { logWebhookEvent } from '../utils/webhookLogger.js';
 
 /**
  * Thin HTTP adapter for the USSD channel.
- *
- * G-7 FLAG: The exact Moolre USSD request shape (field names, encoding) must be
- * confirmed against the live Moolre sandbox. This controller validates against
- * the schema in utils/schemas.ts (moolreUssdInboundSchema), which is derived
- * from common USSD conventions. Update both schema and controller if the live
- * shape differs.
+ * Moolre's confirmed response format (G-7 resolved): JSON { message: string, reply: boolean }.
+ * reply=true keeps the session open; reply=false terminates it.
  */
 export class UssdController {
   /**
    * POST /v1/webhooks/ussd/inbound
    * Receives one USSD dialog turn from Moolre, processes it through the ordering
-   * engine, and returns a CON/END response text.
-   *
-   * Response format: plain text, either "CON <message>" (continue) or "END <message>" (terminate).
-   * G-7 FLAG: confirm with Moolre whether they expect plain text or a JSON wrapper.
+   * engine, and returns { message, reply } JSON per Moolre's confirmed spec (§5.8).
    */
   async inboundUssdWebhook(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       // 1. Log inbound webhook event (with automatic redaction)
       await logWebhookEvent('moolre', req.body);
 
-      // 2. Validate request body against the G-7 schema
+      // 2. Validate request body against the confirmed schema
       const payload = moolreUssdInboundSchema.parse(req.body);
 
       // 3. Delegate to service layer
       const result = await ussdService.handleInboundSession(payload);
 
-      // 4. Return plain text USSD response (CON or END prefixed)
-      // G-7 FLAG: if Moolre expects JSON, wrap responseText in { message: result.responseText }
-      res.set('Content-Type', 'text/plain');
-      res.status(200).send(result.responseText);
+      // 4. Return Moolre's confirmed JSON shape: { message, reply }.
+      // The service prefixes responseText with CON\n / END\n internally; strip it here
+      // since Moolre uses reply:bool rather than text prefixes.
+      const prefix = result.isEnd ? 'END\n' : 'CON\n';
+      const message = result.responseText.startsWith(prefix)
+        ? result.responseText.slice(prefix.length)
+        : result.responseText;
+
+      res.status(200).json({ message, reply: !result.isEnd });
     } catch (err) {
       next(err);
     }
@@ -48,7 +46,7 @@ export class UssdController {
   async getUssdSessions(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const filters = getUssdSessionsQuerySchema.parse(req.query);
-      const result = await ussdService.getUssdSessions(filters as any);
+      const result = await ussdService.getUssdSessions(filters);
       res.status(200).json(result);
     } catch (err) {
       next(err);

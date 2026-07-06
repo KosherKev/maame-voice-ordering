@@ -23,9 +23,16 @@ const envSchema = zod_1.z.object({
     MOOLRE_API_KEY: zod_1.z.string().min(1),
     MOOLRE_VASKEY: zod_1.z.string().min(1),
     MOOLRE_PUBKEY: zod_1.z.string().min(1),
-    WEBHOOK_SHARED_SECRET: zod_1.z.string().min(1),
+    // Per-provider webhook secrets (B-5 — split from single WEBHOOK_SHARED_SECRET for isolation)
+    AT_WEBHOOK_SECRET: zod_1.z.string().min(1),
+    MOOLRE_WEBHOOK_SECRET: zod_1.z.string().min(1),
     LLM_PROVIDER: zod_1.z.enum(['claude', 'gemini']),
     NODE_ENV: zod_1.z.enum(['development', 'production', 'test']).default('development'),
+    // CORS: comma-separated list of allowed origins (A-3 — env-driven for production)
+    ALLOWED_ORIGINS: zod_1.z.string().default('http://localhost:5173,http://localhost:3000'),
+    // IP allowlists: comma-separated CIDR ranges for webhook source-IP verification (B-4, G-9)
+    AT_IP_ALLOWLIST: zod_1.z.string().default(''),
+    MOOLRE_IP_ALLOWLIST: zod_1.z.string().default(''),
 });
 const parsed = envSchema.safeParse(process.env);
 if (!parsed.success) {

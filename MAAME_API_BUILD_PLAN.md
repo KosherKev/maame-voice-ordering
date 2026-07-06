@@ -135,12 +135,12 @@ Sequential phases, each building on the last. No phase starts until the previous
 
 **Goal**: the system survives real-world failure modes, not just the happy path.
 
-- [ ] Audit webhook shared-secret rotation and IP-allowlist coverage for both providers (Gap G-9)
-- [ ] Tune retry/backoff for the Moolre transfer-status polling job (Gap G-3)
-- [ ] Load-test the idempotency key store and rate limiter under concurrent requests
-- [ ] Verify every entry in the contract's Error Catalogue (§3) is actually reachable and returns the exact documented shape
-- [ ] Security review: confirm no secrets appear in logs, no stack traces leak to clients, CORS is locked to the dashboard origin only
-- [ ] Chaos pass: kill the DB connection mid-request, replay a webhook twice, let a JWT expire mid-session — confirm the system degrades to the contract-documented error responses in every case, never a raw 500 with no problem+json body
+- [x] Audit webhook shared-secret rotation and IP-allowlist coverage for both providers (Gap G-9)
+- [x] Tune retry/backoff for the Moolre transfer-status polling job (Gap G-3)
+- [x] Load-test the idempotency key store and rate limiter under concurrent requests
+- [x] Verify every entry in the contract's Error Catalogue (§3) is actually reachable and returns the exact documented shape
+- [x] Security review: confirm no secrets appear in logs, no stack traces leak to clients, CORS is locked to the dashboard origin only
+- [x] Chaos pass: kill the DB connection mid-request, replay a webhook twice, let a JWT expire mid-session — confirm the system degrades to the contract-documented error responses in every case, never a raw 500 with no problem+json body
 
 **Acceptance criteria**: every chaos scenario above produces a contract-compliant error response, not a crash or an undocumented failure mode.
 

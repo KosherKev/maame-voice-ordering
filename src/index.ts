@@ -1,8 +1,8 @@
-// Trigger environment variable validation immediately on boot
 import { env } from './config/env.js';
 import { app } from './app.js';
 import { sweepAbandonedSessions } from './jobs/sessionSweep.js';
 import { runDisbursementPoll } from './jobs/disbursementPoll.js';
+import { cleanupExpiredIdempotencyKeys } from './middleware/idempotency.js';
 
 const port = env.PORT;
 
@@ -31,5 +31,18 @@ app.listen(port, () => {
       console.error('Failed to run disbursement status polling interval:', err);
     }
   }, DISBURSEMENT_POLL_INTERVAL_MS);
+
+  // Start the background job for cleaning up expired idempotency keys (A-6)
+  const IDEMPOTENCY_CLEANUP_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+  setInterval(async () => {
+    try {
+      const deletedCount = await cleanupExpiredIdempotencyKeys();
+      if (deletedCount > 0) {
+        console.log(`🧹 Cleaned up ${deletedCount} expired idempotency keys.`);
+      }
+    } catch (err) {
+      console.error('Failed to run idempotency keys cleanup interval:', err);
+    }
+  }, IDEMPOTENCY_CLEANUP_INTERVAL_MS);
 });
 

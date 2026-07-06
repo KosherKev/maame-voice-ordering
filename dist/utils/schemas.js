@@ -1,7 +1,34 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getReconciliationTransactionsQuerySchema = exports.getReconciliationSummaryQuerySchema = exports.getUssdSessionParamsSchema = exports.getCallSessionParamsSchema = exports.getCallSessionsQuerySchema = exports.getOrderParamsSchema = exports.getOrdersQuerySchema = exports.getFulfillmentsParamsSchema = exports.markDeliveredParamsSchema = exports.moolrePaymentWebhookSchema = exports.retryPaymentParamsSchema = void 0;
+exports.getReconciliationTransactionsQuerySchema = exports.getReconciliationSummaryQuerySchema = exports.getUssdSessionParamsSchema = exports.getCallSessionParamsSchema = exports.getCallSessionsQuerySchema = exports.getOrderParamsSchema = exports.getOrdersQuerySchema = exports.getFulfillmentsParamsSchema = exports.markDeliveredParamsSchema = exports.moolrePaymentWebhookSchema = exports.retryPaymentParamsSchema = exports.getUssdSessionsQuerySchema = exports.moolreUssdInboundSchema = void 0;
 const zod_1 = require("zod");
+/**
+ * Moolre USSD inbound webhook shape — confirmed from the live Moolre dashboard
+ * simulator (G-7 resolved). Field names and types verified against the simulator
+ * payload reference and Moolre's docs. See contract §5.8 for the full payload table.
+ */
+exports.moolreUssdInboundSchema = zod_1.z.object({
+    /** Unique session ID — correlates all turns of one dial */
+    sessionId: zod_1.z.string().min(1, { message: 'sessionId is required' }),
+    /** true on the first turn of a session, false on continuations */
+    new: zod_1.z.boolean(),
+    /** Customer MSISDN (phone number) */
+    msisdn: zod_1.z.string().min(1, { message: 'msisdn (customer phone) is required' }),
+    /** Network code: 3 = MTN, 5 = AirtelTigo, 6 = Telecel */
+    network: zod_1.z.number().int(),
+    /** Customer's input text (empty string on the first turn) */
+    message: zod_1.z.string().default(''),
+    /** The shared-code extension assigned to Maame (e.g. "109" for *203*109#) */
+    extension: zod_1.z.string().optional(),
+    /** Extra digits dialled at initiation (e.g. *203*109*11005# → data = "11005") */
+    data: zod_1.z.string().optional(),
+});
+exports.getUssdSessionsQuerySchema = zod_1.z.object({
+    limit: zod_1.z.coerce.number().min(1).max(100).default(20),
+    cursor: zod_1.z.string().optional(),
+    phone: zod_1.z.string().optional(),
+    since: zod_1.z.string().datetime({ message: 'since must be a valid ISO 8601 datetime' }).optional(),
+});
 exports.retryPaymentParamsSchema = zod_1.z.object({
     orderId: zod_1.z.string().uuid({ message: 'Order ID must be a valid UUID' }),
 });

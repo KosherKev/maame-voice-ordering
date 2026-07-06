@@ -85,7 +85,7 @@ New Customer Utterance:
                 const errorText = await response.text();
                 throw new Error(`Gemini API returned status ${response.status}: ${errorText}`);
             }
-            const resultJson = await response.json();
+            const resultJson = (await response.json());
             const text = resultJson.candidates?.[0]?.content?.parts?.[0]?.text;
             if (!text) {
                 throw new Error('Gemini API returned empty response candidate');

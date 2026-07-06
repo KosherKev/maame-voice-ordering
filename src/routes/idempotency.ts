@@ -10,7 +10,7 @@ router.post(
   async (req: Request, res: Response, next: NextFunction) => {
     const key = req.query.key;
 
-    if (!key || key !== env.WEBHOOK_SHARED_SECRET) {
+    if (!key || (key !== env.AT_WEBHOOK_SECRET && key !== env.MOOLRE_WEBHOOK_SECRET)) {
       return next(new UnauthorizedError('Invalid shared secret key'));
     }
 

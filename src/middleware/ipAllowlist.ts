@@ -1,7 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { env } from '../config/env.js';
 import { WebhookSignatureInvalidError } from '../errors/index.js';
-import { createRequire } from 'module';
 
 /**
  * Parses a comma-separated CIDR/IP list from an env var into an array of strings.

@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.errorHandlerMiddleware = errorHandlerMiddleware;
+const zod_1 = require("zod");
 const index_js_1 = require("../errors/index.js");
 function errorHandlerMiddleware(err, req, res, 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -20,6 +21,23 @@ next) {
             body.errors = err.errors;
         }
         return res.status(status).json(body);
+    }
+    // Handle Zod validation errors → 400 validation-error (RFC 9457)
+    // Zod throws when .parse() fails in controllers/schemas — must map to contract §3
+    if (err instanceof zod_1.ZodError) {
+        res.setHeader('Content-Type', 'application/problem+json');
+        const errors = err.issues.map((issue) => ({
+            detail: issue.message,
+            pointer: `/${issue.path.join('/')}`,
+        }));
+        return res.status(400).json({
+            type: 'https://api.maame.app/problems/validation-error',
+            title: 'Validation error',
+            status: 400,
+            detail: errors.length === 1 ? errors[0].detail : `${errors.length} validation errors`,
+            instance: req.originalUrl,
+            errors,
+        });
     }
     // Handle standard express JSON parsing errors
     if (err instanceof SyntaxError && 'status' in err && err.status === 400 && 'body' in err) {

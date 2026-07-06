@@ -1,4 +1,5 @@
 import { prisma } from '../db/prisma.js';
+import { TranscriptEntry } from '../services/voiceService.js';
 
 /**
  * Sweeps active call and USSD sessions that have been idle past the timeout limit,
@@ -21,7 +22,7 @@ export async function sweepAbandonedSessions(timeoutSeconds: number = 90): Promi
     });
 
     for (const session of activeCallSessions) {
-      const transcript = (session.transcript as any[]) || [];
+      const transcript = (session.transcript as unknown as TranscriptEntry[]) || [];
       let isIdle = true;
 
       // Check the timestamp of the last turn in dialog history for active calls

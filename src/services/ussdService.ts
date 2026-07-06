@@ -4,6 +4,15 @@ import { llmClient } from '../integrations/index.js';
 import { NotFoundError } from '../errors/index.js';
 import { paymentService } from './paymentService.js';
 import { MoolreUssdInboundPayload } from '../utils/schemas.js';
+import { USSDSession, OrderItem } from '@prisma/client';
+
+export interface CatalogItem {
+  id: string;
+  name: string;
+  priceInPesewas: number;
+  vendorId: string;
+  vendorName: string;
+}
 
 // ---------------------------------------------------------------------------
 // USSD Menu state constants
@@ -15,20 +24,13 @@ const MENU_CONFIRMING = 'confirming';
 const MENU_AWAITING_PAYMENT = 'awaiting_payment';
 const MENU_DONE = 'done';
 
-// Moolre USSD response type codes
-const USSD_CONTINUE = 'CON'; // Continue session (prompt customer for input)
-const USSD_END = 'END'; // Terminate session (final message, no input expected)
-
-/**
- * G-7 FLAG: The exact Moolre USSD response format (CON/END prefix, or a JSON wrapper)
- * must be confirmed against the live Moolre sandbox before production use.
- * This implementation uses the documented *203# convention where the response body
- * is plain text prefixed with CON (continue) or END (terminate).
- * Update formatResponse() if Moolre's actual format differs.
- */
+// Internal markers stripped at the controller boundary before the JSON response
+// is sent to Moolre as { message, reply } (confirmed format — G-7 resolved).
+const USSD_CONTINUE = 'CON'; // reply: true
+const USSD_END = 'END'; // reply: false
 
 export interface UssdTurnResult {
-  /** Plain-text USSD response body for Moolre */
+  /** Response text — CON/END prefix is stripped by the controller before JSON serialisation */
   responseText: string;
   /** Whether this turn ends the USSD session */
   isEnd: boolean;
@@ -40,24 +42,20 @@ export class UssdService {
    * Reuses the Order/OrderItem engine and LlmClient built in Phase 3.
    */
   async handleInboundSession(payload: MoolreUssdInboundPayload): Promise<UssdTurnResult> {
-    const { sessionid, msisdn, text, type } = payload;
+    const { sessionId, msisdn, message } = payload;
 
-    // type=2 means the network terminated the session before the customer did
-    if (type === 2) {
-      await this.handleSessionEnd(sessionid);
-      return { responseText: `${USSD_END}\nThank you for using Maame!`, isEnd: true };
-    }
-
-    // Find or create the USSDSession row
+    // Find or create the USSDSession row.
+    // Moolre's confirmed payload has no explicit "session terminated by network" signal —
+    // abandoned sessions are handled by the background sweep job (Phase 4).
     let ussdSession = await prisma.uSSDSession.findFirst({
-      where: { sessionIdMoolre: sessionid },
+      where: { sessionIdMoolre: sessionId },
     });
 
     if (!ussdSession) {
       ussdSession = await prisma.uSSDSession.create({
         data: {
           customerPhone: msisdn,
-          sessionIdMoolre: sessionid,
+          sessionIdMoolre: sessionId,
           status: 'active',
           menuState: MENU_WELCOME,
         },
@@ -67,13 +65,13 @@ export class UssdService {
     // Route to the correct handler based on current menu state
     switch (ussdSession.menuState) {
       case MENU_WELCOME:
-        return this.handleWelcome(ussdSession, text);
+        return this.handleWelcome(ussdSession, message);
 
       case MENU_COLLECTING:
-        return this.handleCollecting(ussdSession, msisdn, text);
+        return this.handleCollecting(ussdSession, msisdn, message);
 
       case MENU_CONFIRMING:
-        return this.handleConfirming(ussdSession, text);
+        return this.handleConfirming(ussdSession, message);
 
       case MENU_AWAITING_PAYMENT:
       case MENU_DONE:
@@ -83,7 +81,7 @@ export class UssdService {
         };
 
       default:
-        return this.handleWelcome(ussdSession, text);
+        return this.handleWelcome(ussdSession, message);
     }
   }
 
@@ -146,7 +144,7 @@ export class UssdService {
       : null;
 
     const basket = currentOrder
-      ? currentOrder.orderItems.map((item: any) => ({
+      ? currentOrder.orderItems.map((item: OrderItem) => ({
           productId: item.productId,
           quantity: item.quantity,
           unitPriceInPesewas: item.unitPriceInPesewas,
@@ -192,16 +190,16 @@ export class UssdService {
         // Determine vendor lock
         let lockedVendorId: string | null = null;
         if (currentOrder && currentOrder.orderItems.length > 0) {
-          lockedVendorId = (currentOrder.orderItems[0] as any).vendorId;
+          lockedVendorId = currentOrder.orderItems[0].vendorId;
         }
 
         // Single-vendor constraint check
         for (const item of matchedItems) {
-          const product = catalog.find((p: any) => p.id === item.productId);
+          const product = catalog.find((p: CatalogItem) => p.id === item.productId);
           if (!product) continue;
           if (lockedVendorId && product.vendorId !== lockedVendorId) {
             const vendorName =
-              catalog.find((p: any) => p.vendorId === lockedVendorId)?.vendorName ||
+              catalog.find((p: CatalogItem) => p.vendorId === lockedVendorId)?.vendorName ||
               'the selected joint';
             return {
               responseText:
@@ -439,10 +437,12 @@ export class UssdService {
   }
 
   /**
-   * Handles network-terminated sessions (type=2).
-   * Marks session and linked order as abandoned if still in draft state.
+   * Marks a session and its linked order as abandoned.
+   * Called by the background sweep job (Phase 4) for sessions idle past the timeout.
+   * Not triggered by an inbound webhook signal — Moolre's confirmed payload has no
+   * explicit network-termination field.
    */
-  private async handleSessionEnd(moolreSessionId: string): Promise<void> {
+  async handleSessionEnd(moolreSessionId: string): Promise<void> {
     const session = await prisma.uSSDSession.findFirst({
       where: { sessionIdMoolre: moolreSessionId },
     });
@@ -469,8 +469,8 @@ export class UssdService {
    * Read-only catalog fetch (same raw query as voiceService.fetchActiveCatalog).
    * Shared logic — not duplicated; both services read the same Supabase-owned tables via Prisma.
    */
-  private async fetchActiveCatalog(): Promise<any[]> {
-    return prisma.$queryRaw<any[]>`
+  private async fetchActiveCatalog(): Promise<CatalogItem[]> {
+    return prisma.$queryRaw<CatalogItem[]>`
       SELECT p.id, p.name, p."priceInPesewas", p."vendorId", v.name as "vendorName"
       FROM public.products p
       JOIN public.vendors v ON p."vendorId" = v.id
@@ -534,12 +534,12 @@ export class UssdService {
     return { data, pagination: { nextCursor, hasMore, limit: filters.limit } };
   }
 
-  async getUssdSession(id: string): Promise<any> {
+  async getUssdSession(id: string): Promise<Omit<USSDSession, 'sessionIdMoolre'>> {
     const session = await prisma.uSSDSession.findUnique({ where: { id } });
     if (!session) throw new NotFoundError(`USSD session not found: ${id}`);
 
     // Exclude sessionIdMoolre (internal-only per contract §9)
-    const { sessionIdMoolre: _internal, ...publicFields } = session as any;
+    const { sessionIdMoolre: _internal, ...publicFields } = session;
     return publicFields;
   }
 }

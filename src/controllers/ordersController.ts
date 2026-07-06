@@ -34,7 +34,7 @@ export class OrdersController {
   async getOrders(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const filters = getOrdersQuerySchema.parse(req.query);
-      const result = await ordersService.getOrders(filters as any);
+      const result = await ordersService.getOrders(filters);
 
       const sanitizedData = result.data.map((order) => sanitizeOrder(order, req.user?.role));
 

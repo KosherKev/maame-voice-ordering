@@ -6,7 +6,7 @@ export class ClaudeLlmClient implements LlmClient {
   async processSpeech(
     catalog: any[],
     currentBasket: any[],
-    history: { speaker: 'customer' | 'maame'; text: string; timestamp: Date }[],
+    history: { speaker: 'customer' | 'maame'; text: string; timestamp: string | Date }[],
     newUserUtterance: string,
   ): Promise<LlmDecision> {
     try {
@@ -100,8 +100,13 @@ New Customer Utterance:
         throw new Error(`Claude API returned status ${response.status}: ${errorText}`);
       }
 
-      const resultJson = await response.json() as any;
-      const toolUseContent = resultJson.content?.find((c: any) => c.type === 'tool_use');
+      const resultJson = (await response.json()) as {
+        content?: {
+          type: string;
+          input?: any;
+        }[];
+      };
+      const toolUseContent = resultJson.content?.find((c) => c.type === 'tool_use');
       
       if (!toolUseContent || !toolUseContent.input) {
         throw new Error('Claude API did not return tool use structure');

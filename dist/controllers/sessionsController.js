@@ -29,8 +29,7 @@ class SessionsController {
             const params = schemas_js_1.getUssdSessionParamsSchema.parse(req.params);
             const session = await sessionsService_js_1.sessionsService.getUssdSession(params.ussdSessionId);
             // Sanitize: Exclude sessionIdMoolre (internal-only field)
-            const responseData = { ...session };
-            delete responseData.sessionIdMoolre;
+            const { sessionIdMoolre: _, ...responseData } = session;
             res.status(200).json(responseData);
         }
         catch (err) {

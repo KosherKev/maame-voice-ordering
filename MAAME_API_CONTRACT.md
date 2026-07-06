@@ -56,7 +56,7 @@ This document is the single source of truth for every endpoint, webhook, event, 
 |---|---|---|---|
 | `validation-error` | 400 | Validation error | Request body fails schema validation |
 | `unauthorized` | 401 | Unauthorized | Missing, malformed, or expired JWT |
-| `invalid-credentials` | 401 | Invalid credentials | Login with wrong username/password |
+| `invalid-credentials` | 401 | Invalid credentials | Login with wrong username/password (Note: Supabase Auth is called direct from frontend per G-10; this error is currently unused/unreachable in the custom API endpoints) |
 | `forbidden` | 403 | Forbidden | Valid token, insufficient role/permission |
 | `not-found` | 404 | Not found | Vendor/product/order/fulfillment/session id doesn't exist |
 | `idempotency-conflict` | 409 | Idempotency key conflict | Same `Idempotency-Key` reused with a different request body |
@@ -153,6 +153,9 @@ Response `200`: paginated ledger entries, each `{ "type": "collection|disburseme
 Response `200`: paginated CallSession summaries
 
 **`GET /v1/call-sessions/{callSessionId}`** — Response `200`: CallSession including full transcript array `[{ "speaker": "customer|maame", "text": "string", "timestamp": "ISO8601" }]`. Errors: `not-found`
+
+**`GET /v1/ussd-sessions`** — Auth: bearer. Query: `?limit&cursor&phone&since`
+Response `200`: paginated USSDSession summaries
 
 **`GET /v1/ussd-sessions/{ussdSessionId}`** — Response `200`: USSDSession including menu-state history. Errors: `not-found`
 

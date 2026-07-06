@@ -8,7 +8,7 @@ const index_js_1 = require("../errors/index.js");
 const router = (0, express_1.Router)();
 router.post('/idempotency/cleanup', async (req, res, next) => {
     const key = req.query.key;
-    if (!key || key !== env_js_1.env.WEBHOOK_SHARED_SECRET) {
+    if (!key || (key !== env_js_1.env.AT_WEBHOOK_SECRET && key !== env_js_1.env.MOOLRE_WEBHOOK_SECRET)) {
         return next(new index_js_1.UnauthorizedError('Invalid shared secret key'));
     }
     try {
