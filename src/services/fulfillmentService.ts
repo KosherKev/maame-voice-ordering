@@ -1,5 +1,5 @@
 import { prisma } from '../db/prisma.js';
-import { moolreClient } from '../integrations/index.js';
+import { moolreClient, NotificationClient, TransferClient } from '../integrations/index.js';
 import {
   NotFoundError,
   FulfillmentAlreadyDeliveredError,
@@ -20,6 +20,10 @@ interface RawProduct {
 }
 
 export class FulfillmentService {
+  constructor(
+    private notificationClient: NotificationClient,
+    private transferClient: TransferClient,
+  ) {}
   /**
    * Processes the paid status of an order:
    * - Queries order details and items.
@@ -86,7 +90,7 @@ export class FulfillmentService {
     const message = `Maame Order Alert! You have a new order: ${orderItemsText}. Total: GHS ${totalGhs}. Deliver to: ${order.customerPhone}. Order ID: ${order.id.slice(0, 8)}`;
 
     // Send SMS via Moolre integration
-    await moolreClient.sendSms(vendor.phone, message);
+    await this.notificationClient.sendSms(vendor.phone, message);
 
     // Create VendorFulfillment and update Order status atomically
     const subtotal = orderItems.reduce(
@@ -221,7 +225,7 @@ export class FulfillmentService {
     externalRef: string,
   ): Promise<void> {
     try {
-      const { moolreTransactionId } = await moolreClient.initiateTransfer({
+      const { moolreTransactionId } = await this.transferClient.initiateTransfer({
         amountInPesewas,
         vendorPhone: vendor.phone,
         momoChannel: vendor.momoChannel,
@@ -270,7 +274,7 @@ export class FulfillmentService {
 
     for (const disbursement of pendingDisbursements) {
       try {
-        const result = await moolreClient.getTransactionStatus(disbursement.externalref);
+        const result = await this.transferClient.getTransactionStatus(disbursement.externalref);
 
         if (result.status === 'success') {
           await prisma.$transaction([
@@ -366,5 +370,5 @@ export class FulfillmentService {
   }
 }
 
-export const fulfillmentService = new FulfillmentService();
+export const fulfillmentService = new FulfillmentService(moolreClient, moolreClient);
 export default fulfillmentService;

@@ -2,6 +2,8 @@ import { env } from '../../config/env.js';
 import jwt from 'jsonwebtoken';
 import { UpstreamProviderError } from '../../errors/index.js';
 
+import { PaymentClient, NotificationClient, TransferClient } from './interfaces.js';
+
 export interface InitiatePaymentParams {
   amountInPesewas: number;
   customerPhone: string;
@@ -12,7 +14,7 @@ export interface InitiatePaymentResult {
   moolreTransactionId: string;
 }
 
-export class MoolreClient {
+export class MoolreClient implements PaymentClient, NotificationClient, TransferClient {
   private get baseUrl(): string {
     return env.NODE_ENV === 'production'
       ? 'https://api.moolre.com'

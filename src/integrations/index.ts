@@ -18,3 +18,4 @@ export const llmClient: LlmClient = env.LLM_PROVIDER === 'claude'
 
 export { AsrClient, TtsClient, LlmClient, MoolreClient };
 export { LlmDecision } from './llm/llmClient.js';
+export { PaymentClient, NotificationClient, TransferClient } from './moolre/interfaces.js';
