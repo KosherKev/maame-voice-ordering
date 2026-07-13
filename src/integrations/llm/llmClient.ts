@@ -17,7 +17,7 @@ export interface LlmClient {
   processSpeech(
     catalog: any[],
     currentBasket: any[],
-    history: { speaker: 'customer' | 'maame'; text: string; timestamp: Date }[],
+    history: { speaker: 'customer' | 'maame'; text: string; timestamp: string | Date }[],
     newUserUtterance: string,
   ): Promise<LlmDecision>;
 }

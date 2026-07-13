@@ -23,7 +23,7 @@ export class ReconciliationController {
   async getTransactions(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const filters = getReconciliationTransactionsQuerySchema.parse(req.query);
-      const result = await reconciliationService.getTransactions(filters as any);
+      const result = await reconciliationService.getTransactions(filters);
 
       res.status(200).json(result);
     } catch (err) {

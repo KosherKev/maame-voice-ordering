@@ -4,40 +4,44 @@ import { WebhookController } from '../controllers/webhookController.js';
 import { fulfillmentsController } from '../controllers/fulfillmentsController.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { idempotencyMiddleware } from '../middleware/idempotency.js';
+import { webhookRateLimiter, adminRateLimiter } from '../middleware/rateLimiter.js';
 import { env } from '../config/env.js';
 import { WebhookSignatureInvalidError } from '../errors/index.js';
+import { moolreIpAllowlist } from '../middleware/ipAllowlist.js';
 
 const router = Router();
 const webhookController = new WebhookController();
 
 /**
- * Middleware to verify Moolre / Africa's Talking shared secret query parameter
+ * Middleware to verify Moolre shared secret query parameter (§10, G-9).
  */
-function verifyWebhookSecret(req: Request, res: Response, next: NextFunction) {
+function verifyMoolreWebhookSecret(req: Request, res: Response, next: NextFunction) {
   const { key } = req.query;
 
-  if (!key || key !== env.WEBHOOK_SHARED_SECRET) {
+  if (!key || key !== env.MOOLRE_WEBHOOK_SECRET) {
     return next(new WebhookSignatureInvalidError('Unauthorized webhook access: invalid or missing secret key'));
   }
   next();
 }
 
-// Order Query Routes
-router.get('/orders', authMiddleware, ordersController.getOrders);
-router.get('/orders/:orderId', authMiddleware, ordersController.getOrder);
+// Order Query Routes (admin, rate-limited)
+router.get('/orders', authMiddleware, adminRateLimiter, ordersController.getOrders);
+router.get('/orders/:orderId', authMiddleware, adminRateLimiter, ordersController.getOrder);
 
-// Mutating Order payment retry endpoint - requires auth and idempotency check
+// Mutating Order payment retry endpoint - requires auth, rate limit, and idempotency check
 router.post(
   '/orders/:orderId/retry-payment',
   authMiddleware,
+  adminRateLimiter,
   idempotencyMiddleware,
   ordersController.retryPayment
 );
 
-// Mutating Order cancellation endpoint - requires auth and idempotency check
+// Mutating Order cancellation endpoint - requires auth, rate limit, and idempotency check
 router.post(
   '/orders/:orderId/cancel',
   authMiddleware,
+  adminRateLimiter,
   idempotencyMiddleware,
   ordersController.cancelOrder
 );
@@ -46,13 +50,17 @@ router.post(
 router.get(
   '/orders/:orderId/fulfillments',
   authMiddleware,
+  adminRateLimiter,
   fulfillmentsController.getFulfillmentsForOrder
 );
 
-// Webhook endpoint for Moolre payment callbacks - requires query parameter key check
+// Webhook endpoint for Moolre payment callbacks
+// Security: rate limiter → IP allowlist → shared secret → handler (§10, G-9)
 router.post(
   '/webhooks/moolre/payment',
-  verifyWebhookSecret,
+  webhookRateLimiter,
+  moolreIpAllowlist,
+  verifyMoolreWebhookSecret,
   webhookController.handleMoolrePayment
 );
 

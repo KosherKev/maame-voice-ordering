@@ -1,25 +1,25 @@
 import { z } from 'zod';
 
 /**
- * G-7 FLAG: Moolre USSD inbound webhook shape.
- * The public Moolre reference is minimal for the USSD inbound hook. The fields
- * below are derived from the Moolre API reference (llms-full.txt) and common
- * USSD session-protocol conventions (sessionid, msisdn, text, type).
- * MUST be verified against a live Moolre sandbox before Phase 7 goes to
- * production — do not treat field names as confirmed. Update this schema
- * and ussdService.ts if the live shape differs.
+ * Moolre USSD inbound webhook shape — confirmed from the live Moolre dashboard
+ * simulator (G-7 resolved). Field names and types verified against the simulator
+ * payload reference and Moolre's docs. See contract §5.8 for the full payload table.
  */
 export const moolreUssdInboundSchema = z.object({
-  /** Moolre session identifier — correlates multi-turn USSD dialog */
-  sessionid: z.string().min(1, { message: 'sessionid is required' }),
+  /** Unique session ID — correlates all turns of one dial */
+  sessionId: z.string().min(1, { message: 'sessionId is required' }),
+  /** true on the first turn of a session, false on continuations */
+  new: z.boolean(),
   /** Customer MSISDN (phone number) */
   msisdn: z.string().min(1, { message: 'msisdn (customer phone) is required' }),
-  /** The accumulated USSD input string for this session (e.g. "1*2*3") */
-  text: z.string().default(''),
-  /** Session lifecycle indicator: 1 = new/continuing, 2 = end (session terminated by network) */
-  type: z.coerce.number().int().optional(),
-  /** Service code dialled by the customer (e.g. *203#) */
-  serviceCode: z.string().optional(),
+  /** Network code: 3 = MTN, 5 = AirtelTigo, 6 = Telecel */
+  network: z.number().int(),
+  /** Customer's input text (empty string on the first turn) */
+  message: z.string().default(''),
+  /** The shared-code extension assigned to Maame (e.g. "109" for *203*109#) */
+  extension: z.string().optional(),
+  /** Extra digits dialled at initiation (e.g. *203*109*11005# → data = "11005") */
+  data: z.string().optional(),
 });
 
 export type MoolreUssdInboundPayload = z.infer<typeof moolreUssdInboundSchema>;

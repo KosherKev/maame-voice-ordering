@@ -10,7 +10,7 @@ export class SessionsController {
   async getCallSessions(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const filters = getCallSessionsQuerySchema.parse(req.query);
-      const result = await sessionsService.getCallSessions(filters as any);
+      const result = await sessionsService.getCallSessions(filters);
 
       res.status(200).json(result);
     } catch (err) {
@@ -35,8 +35,7 @@ export class SessionsController {
       const session = await sessionsService.getUssdSession(params.ussdSessionId);
 
       // Sanitize: Exclude sessionIdMoolre (internal-only field)
-      const responseData = { ...session };
-      delete (responseData as any).sessionIdMoolre;
+      const { sessionIdMoolre: _, ...responseData } = session;
 
       res.status(200).json(responseData);
     } catch (err) {

@@ -368,7 +368,7 @@ class VoiceService {
         return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Play url="__HOST__/v1/tts/play?text=${encodedText}"/>
-  <Record maxLength="10" timeout="3" trimSilence="true" playBeep="true" callbackUrl="__HOST__/v1/webhooks/voice/inbound?key=${env_js_1.env.WEBHOOK_SHARED_SECRET}&amp;action=process_speech"/>
+  <Record maxLength="10" timeout="3" trimSilence="true" playBeep="true" callbackUrl="__HOST__/v1/webhooks/voice/inbound?key=${env_js_1.env.AT_WEBHOOK_SECRET}&amp;action=process_speech"/>
 </Response>`;
     }
     /**

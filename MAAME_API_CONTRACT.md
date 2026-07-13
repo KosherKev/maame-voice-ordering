@@ -56,7 +56,7 @@ This document is the single source of truth for every endpoint, webhook, event, 
 |---|---|---|---|
 | `validation-error` | 400 | Validation error | Request body fails schema validation |
 | `unauthorized` | 401 | Unauthorized | Missing, malformed, or expired JWT |
-| `invalid-credentials` | 401 | Invalid credentials | Login with wrong username/password |
+| `invalid-credentials` | 401 | Invalid credentials | Login with wrong username/password (Note: Supabase Auth is called direct from frontend per G-10; this error is currently unused/unreachable in the custom API endpoints) |
 | `forbidden` | 403 | Forbidden | Valid token, insufficient role/permission |
 | `not-found` | 404 | Not found | Vendor/product/order/fulfillment/session id doesn't exist |
 | `idempotency-conflict` | 409 | Idempotency key conflict | Same `Idempotency-Key` reused with a different request body |
@@ -154,6 +154,9 @@ Response `200`: paginated CallSession summaries
 
 **`GET /v1/call-sessions/{callSessionId}`** — Response `200`: CallSession including full transcript array `[{ "speaker": "customer|maame", "text": "string", "timestamp": "ISO8601" }]`. Errors: `not-found`
 
+**`GET /v1/ussd-sessions`** — Auth: bearer. Query: `?limit&cursor&phone&since`
+Response `200`: paginated USSDSession summaries
+
 **`GET /v1/ussd-sessions/{ussdSessionId}`** — Response `200`: USSDSession including menu-state history. Errors: `not-found`
 
 ### 5.8 Provider Webhooks (inbound)
@@ -168,7 +171,37 @@ Response `200`: paginated CallSession summaries
 ```
 (In practice `GetDigits` is DTMF-oriented; the actual conversational loop uses AT's recording/streaming mechanism feeding Khaya ASR — confirm AT's exact real-time audio streaming action name against their current docs before implementation, flagged in §8 as Gap G-6.)
 
-**`POST /v1/webhooks/ussd/inbound`** — Auth: shared secret + Moolre source-IP allowlist. Request/response follow Moolre's USSD session protocol (`*203#` style, `sessionid` correlates turns) — exact field-level shape to be confirmed against Moolre's USSD integration docs at build time (their public reference is minimal on this endpoint; treat as Gap G-7 in §8).
+**`POST /v1/webhooks/ussd/inbound`** — Auth: shared secret + Moolre source-IP allowlist. Moolre POSTs this JSON on every USSD turn:
+
+```json
+{
+  "sessionId": "3-17074657982460137",
+  "new": true,
+  "msisdn": "233241235993",
+  "network": 3,
+  "message": "",
+  "extension": "109",
+  "data": "11005"
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `sessionId` | string | Unique session ID — correlates all turns of one dial |
+| `new` | boolean | `true` on the first turn of a session |
+| `msisdn` | string | Customer's phone number |
+| `network` | integer | 3 = MTN, 5 = AirtelTigo, 6 = Telecel |
+| `message` | string | Customer's input text (empty string on the first turn) |
+| `extension` | string | The shared-code extension Maame was assigned (e.g. `"109"` → `*203*109#`) |
+| `data` | string | Extra digits dialled at initiation (e.g. `*203*109*11005#` → `"11005"`) |
+
+Response **must** be `application/json`:
+```json
+{ "message": "Welcome to Maame!\n1) Order groceries\n2) Check order status", "reply": true }
+```
+`reply: true` keeps the session open (another input expected); `reply: false` terminates the session. Response must be returned within Moolre's session timeout — design the first menu turn to be stateless enough to respond < 2 seconds. Gap G-7 resolved (confirmed from Moolre's live simulator and docs — §8).
+
+**Dev note**: Moolre's browser-based USSD simulator POSTs directly to your callback URL from the browser, so during local development your server must respond with `Access-Control-Allow-Origin: *` (or use a tunnelling tool like ngrok that handles CORS for you). This is a dev-only concern — in production, standard CORS settings apply.
 
 **`POST /v1/webhooks/moolre/payment`** — Auth: shared secret (Moolre's docs don't specify a signature scheme; see §10). Request body per Moolre's Payment Webhook spec: `{ "status": 1, "code": "P01", "message": "Transaction Successful", "data": { /* transaction details incl. externalref, transactionid, amount */ } }`. Response `200` with empty body acknowledges receipt (Moolre retries on non-200). This webhook transitions the matching Order from `awaiting_payment` to `paid`.
 
@@ -229,7 +262,7 @@ Provider selected via `LLM_PROVIDER` env var (`claude` | `gemini`). Claude via A
 Base: `https://api.moolre.com` (sandbox: `https://sandbox.moolre.com`). Auth: `X-API-USER` + `X-API-KEY` (+ `X-API-VASKEY` for SMS, `X-API-PUBKEY` for payment-link/account-creation endpoints); not required in sandbox except `X-API-USER`.
 
 - **SMS** (`POST /open/sms/send`): used for vendor order notifications. Confirmed GHS 0.0222/message (200 GHS / 9,000-message bundle).
-- **USSD**: shared shortcode, GHS 420/month + GHS 0.014/session (confirmed pricing). Exact inbound session webhook shape is Gap G-7 (§8).
+- **USSD**: shared shortcode on `*203#` (e.g. `*203*109#`), GHS 420/month + GHS 0.014/session (confirmed pricing). Dedicated shortcodes also available with NCA approval. Inbound webhook shape confirmed — see §5.8 (G-7 resolved). Testing: use Moolre's in-dashboard browser simulator (configure callback URL + extension, dial the simulated code, your server handles each turn in real time).
 - **Collections** (`POST /open/transact/payment`, "Initiate Payment"): pushes the USSD MoMo approval prompt to the customer's phone mid-call. `channel` 13=MTN, 6=Telecel, 7=AT. Requires unique `externalref` (mapped from our `Idempotency-Key`). Confirmed fee: Moolre 1% (min GHS 0.50, cap GHS 10) + network fee 0.5–1% (cap GHS 20).
 - **Transfer** (`POST /open/transact/transfer`, "Initiate Transfer"): disburses to the vendor's MoMo wallet on `mark-delivered`. `channel` 1=MTN, 6=Telecel, 7=AT. Confirmed fee: Moolre 1% (min GHS 0.50, cap GHS 10), 0% network fee. **No documented push webhook for transfer completion** — the backend polls `POST /open/transact/status` (`idtype=1`, `id=externalref`) on a backoff schedule (Gap G-3, carried from spec).
 - **Validate Name** (`POST /open/transact/validate`): called before the first disbursement to a new vendor's MoMo number, to catch typos before money moves.
@@ -245,7 +278,7 @@ Carried forward from `MAAME_SPEC.md` §8 (G-1 through G-5), plus gaps found whil
 - **G-4** (spec): Abandoned calls/sessions timeout to `abandoned` status. **Contract impact**: `CallSession.status` and `USSDSession.status` both include `abandoned` as a valid terminal value; a background job (not a public endpoint) sweeps idle sessions past a configurable timeout (default 90 seconds of no input).
 - **G-5** (spec): LLM provider swappable via `LlmClient` interface. **Contract impact**: no public endpoint exposes provider choice; it's an internal/ops config concern, not part of the versioned API surface.
 - **G-6** (new): Africa's Talking's exact real-time audio-streaming webhook shape (vs. simple DTMF) isn't confirmed from public docs (JS-rendered pages blocked automated fetch). **Resolution**: confirm against the live AT dashboard/account before Phase 3 (voice channel) implementation begins; do not hardcode assumed field names into the ASR pipeline until verified.
-- **G-7** (new): Moolre's USSD inbound webhook shape isn't fully documented publicly beyond the `*203#` dial-code convention. **Resolution**: confirm with Moolre support/sandbox before Phase 7 (USSD channel) implementation.
+- **G-7** ✅ **Resolved**: Moolre does offer full USSD application hosting (shared code `*203*{ext}#` or dedicated shortcode). Inbound webhook shape confirmed from the live Moolre dashboard simulator and docs — see §5.8 for the exact payload. Moolre's simulator POSTs the same JSON payload to your callback URL that production does, allowing end-to-end local testing without a real handset. Network codes: 3=MTN, 5=AirtelTigo, 6=Telecel. Dev CORS note documented in §5.8.
 - **G-8** (new): Khaya's exact raw HTTP request/response JSON (vs. the Python SDK's abstracted method signatures) isn't confirmed. **Resolution**: confirm against the Khaya developer portal (requires signup) before Phase 3 implementation; the internal `AsrClient`/`TtsClient` interfaces should wrap whatever the real shape turns out to be, so the rest of the codebase never depends on Khaya's wire format directly.
 - **G-9** (new): Neither Africa's Talking nor Moolre document cryptographic webhook signatures. **Resolution**: see §10 — shared secret in the callback URL query string plus source-IP allowlisting, with a migration path to signature verification if either provider adds it later.
 - **G-10** (new — architecture decision, replaces the original Postgres/Prisma-only/custom-JWT/custom-WebSocket design): the system moved to Supabase for Auth, Realtime, and (for Vendors/Products only) direct database access via RLS instead of custom endpoints. **Resolution**: custom `/v1/auth/*` endpoints removed entirely (§5.1); Vendors and Products CRUD removed from the custom backend and replaced with RLS policies (§5.2, §5.3); the custom WebSocket server removed and replaced with Supabase Realtime subscriptions (§4.1). Everything with real business logic (orders, fulfillments, reconciliation, sessions, all provider webhooks) stays on the custom Express backend, since Supabase's auto-API isn't a fit for multi-step state transitions or third-party orchestration. **Impact**: Prisma is retained but scoped only to the tables the custom backend owns; RLS policies become part of this contract's security surface and must be reviewed with the same rigor as endpoint code (see §10).

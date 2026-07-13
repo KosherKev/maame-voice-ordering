@@ -6,7 +6,7 @@ export class GeminiLlmClient implements LlmClient {
   async processSpeech(
     catalog: any[],
     currentBasket: any[],
-    history: { speaker: 'customer' | 'maame'; text: string; timestamp: Date }[],
+    history: { speaker: 'customer' | 'maame'; text: string; timestamp: string | Date }[],
     newUserUtterance: string,
   ): Promise<LlmDecision> {
     try {
@@ -94,7 +94,15 @@ New Customer Utterance:
         throw new Error(`Gemini API returned status ${response.status}: ${errorText}`);
       }
 
-      const resultJson = await response.json() as any;
+      const resultJson = (await response.json()) as {
+        candidates?: {
+          content?: {
+            parts?: {
+              text?: string;
+            }[];
+          };
+        }[];
+      };
       const text = resultJson.candidates?.[0]?.content?.parts?.[0]?.text;
       if (!text) {
         throw new Error('Gemini API returned empty response candidate');
