@@ -1,10 +1,12 @@
 import { prisma } from '../db/prisma.js';
-import { moolreClient } from '../integrations/index.js';
+import { moolreClient, PaymentClient } from '../integrations/index.js';
 import { NotFoundError, InvalidStateTransitionError } from '../errors/index.js';
 import { randomUUID } from 'crypto';
 import { Order, OrderItem, Payment } from '@prisma/client';
 
 export class PaymentService {
+  constructor(private paymentClient: PaymentClient) {}
+
   /**
    * Initiates payment for a voice order confirmed during a call.
    * Generates a unique external reference.
@@ -40,7 +42,7 @@ export class PaymentService {
     });
 
     // Call Moolre client to trigger MoMo push prompt
-    const { moolreTransactionId } = await moolreClient.initiatePayment({
+    const { moolreTransactionId } = await this.paymentClient.initiatePayment({
       amountInPesewas: order.totalInPesewas,
       customerPhone: order.customerPhone,
       externalRef,
@@ -104,7 +106,7 @@ export class PaymentService {
     });
 
     // Call Moolre client to trigger MoMo push prompt
-    const { moolreTransactionId } = await moolreClient.initiatePayment({
+    const { moolreTransactionId } = await this.paymentClient.initiatePayment({
       amountInPesewas: order.totalInPesewas,
       customerPhone: order.customerPhone,
       externalRef: idempotencyKey,
@@ -133,5 +135,5 @@ export class PaymentService {
   }
 }
 
-export const paymentService = new PaymentService();
+export const paymentService = new PaymentService(moolreClient);
 export default paymentService;

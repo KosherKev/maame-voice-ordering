@@ -46,6 +46,21 @@ app.use('/v1', reconciliationRouter);
 
 
 
+// Dynamic import with variable bypasses tsc inclusion
+if (env.NODE_ENV !== 'production') {
+  console.warn('====================================================');
+  console.warn('⚠️  BOXED WARNING: Mounting /dev/voice-harness');
+  console.warn('⚠️  This is for local testing only. NOT for production.');
+  console.warn('====================================================');
+  const routerPath = '../tools/voice-harness/router.js';
+  import(routerPath).then(harnessModule => {
+    app.use('/dev/voice-harness', harnessModule.voiceHarnessRouter);
+  }).catch(err => {
+    console.error('Failed to mount voice harness router', err);
+  });
+}
+
+
 // Catch-all for undefined routes
 app.use((req, res, next) => {
   next(new NotFoundError(`Route ${req.method} ${req.originalUrl} not found`));
