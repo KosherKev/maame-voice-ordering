@@ -255,15 +255,15 @@ export default function OrderDetail({ orderId, onBack }: OrderDetailProps) {
   const getStatusBadge = (status: string) => {
     const s = status.toLowerCase();
     if (['paid', 'disbursed', 'delivered'].includes(s)) {
-      return <span className="badge badge-success">{status}</span>;
+      return <span className="badge-monef-success">{status.replace('_', ' ')}</span>;
     }
     if (['confirming_order', 'awaiting_payment', 'out_for_delivery', 'vendor_notified'].includes(s)) {
-      return <span className="badge badge-warning">{status}</span>;
+      return <span className="badge-monef-warning">{status.replace('_', ' ')}</span>;
     }
     if (['payment_failed', 'cancelled', 'abandoned'].includes(s)) {
-      return <span className="badge badge-danger">{status}</span>;
+      return <span className="badge-monef-error">{status.replace('_', ' ')}</span>;
     }
-    return <span className="badge badge-neutral">{status}</span>;
+    return <span className="badge-monef-neutral">{status.replace('_', ' ')}</span>;
   };
 
   const getFulfillment = () => {
@@ -392,11 +392,11 @@ export default function OrderDetail({ orderId, onBack }: OrderDetailProps) {
                     Moolre Customer Payment
                   </span>
                   {order.payment ? (
-                    <span className={`badge ${order.payment.status === 'success' ? 'badge-success' : order.payment.status === 'failed' ? 'badge-danger' : 'badge-warning'}`}>
+                    <span className={`badge-monef-${order.payment.status === 'success' ? 'success' : order.payment.status === 'failed' ? 'error' : 'warning'}`}>
                       {order.payment.status}
                     </span>
                   ) : (
-                    <span className="badge badge-neutral">uninitiated</span>
+                    <span className="badge-monef-neutral">uninitiated</span>
                   )}
                 </div>
                 {order.payment && (
@@ -415,14 +415,14 @@ export default function OrderDetail({ orderId, onBack }: OrderDetailProps) {
                       <Truck size={16} color="var(--accent-secondary)" />
                       Vendor Fulfillment Settlement
                     </span>
-                    <span className={`badge ${
+                    <span className={`badge-monef-${
                       getFulfillment()?.disbursementStatus === 'completed'
-                        ? 'badge-success'
+                        ? 'success'
                         : getFulfillment()?.disbursementStatus === 'failed'
-                        ? 'badge-danger'
+                        ? 'error'
                         : getFulfillment()?.disbursementStatus === 'processing'
-                        ? 'badge-warning'
-                        : 'badge-neutral'
+                        ? 'warning'
+                        : 'neutral'
                     }`}>
                       Settlement: {getFulfillment()?.disbursementStatus}
                     </span>
@@ -523,7 +523,7 @@ export default function OrderDetail({ orderId, onBack }: OrderDetailProps) {
                   Voice Call Live Transcript
                 </h3>
                 <span
-                  className="badge badge-info"
+                  className="badge-monef-success"
                   style={{ animation: order.status === 'collecting_items' ? 'pulse-glow 2s infinite' : 'none' }}
                 >
                   {order.status === 'collecting_items' ? 'Live Streaming' : 'Archived'}

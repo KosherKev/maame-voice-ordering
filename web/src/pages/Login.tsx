@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { supabase } from '../supabase';
-import { KeyRound, Mail, AlertTriangle, Cpu } from 'lucide-react';
+import { KeyRound, Mail, AlertTriangle } from 'lucide-react';
 
 interface LoginProps {
   onLoginSuccess: () => void;
@@ -53,23 +53,23 @@ export default function Login({ onLoginSuccess }: LoginProps) {
       }}>
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
           <div style={{
+            width: '64px',
+            height: '64px',
+            borderRadius: '50%',
+            background: 'var(--color-success)',
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
-            width: '64px',
-            height: '64px',
-            borderRadius: '16px',
-            background: 'linear-gradient(135deg, var(--accent-primary), var(--accent-secondary))',
+            position: 'relative',
             marginBottom: '16px',
-            boxShadow: '0 0 20px rgba(99, 102, 241, 0.4)'
           }}>
-            <Cpu size={32} color="#fff" />
+            <div style={{ width: '20px', height: '20px', borderRadius: '50%', background: 'var(--bg-secondary)' }} />
           </div>
-          <h1 style={{ fontSize: '2rem', fontWeight: 800, letterSpacing: '-0.02em', background: 'linear-gradient(to right, #fff, #94a3b8)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-            Maame Admin
+          <h1 style={{ fontSize: '2rem', fontWeight: 800, letterSpacing: '0.05em', color: '#ffffff' }}>
+            MAAME
           </h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginTop: '6px' }}>
-            Voice & USSD Commerce Portal
+            System Authentication
           </p>
         </div>
 

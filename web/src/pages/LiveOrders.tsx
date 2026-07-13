@@ -5,7 +5,7 @@ import {
   Filter,
   WifiOff,
   Search,
-  ChevronRight,
+  MoreHorizontal,
   PhoneCall,
   Laptop,
 } from 'lucide-react';
@@ -39,10 +39,8 @@ export default function LiveOrders({ onSelectOrder }: LiveOrdersProps) {
 
   const ordersRef = useRef<Order[]>([]);
   const disconnectTimerRef = useRef<any | null>(null);
-  // Ref mirror so interval callbacks never capture stale state
   const realtimeStatusRef = useRef<string>('connecting');
 
-  // Keep refs in sync so interval callbacks can access latest values without stale closures
   useEffect(() => {
     ordersRef.current = orders;
   }, [orders]);
@@ -51,7 +49,6 @@ export default function LiveOrders({ onSelectOrder }: LiveOrdersProps) {
     realtimeStatusRef.current = realtimeStatus;
   }, [realtimeStatus]);
 
-  // Initial load
   const loadInitialOrders = async () => {
     setIsLoading(true);
     setError(null);
@@ -69,9 +66,7 @@ export default function LiveOrders({ onSelectOrder }: LiveOrdersProps) {
     loadInitialOrders();
   }, []);
 
-  // Supabase Realtime logic + fallback polling
   useEffect(() => {
-    // 1. Subscribe to Realtime
     const channel = supabase
       .channel('orders-logical-replication')
       .on(
@@ -79,7 +74,6 @@ export default function LiveOrders({ onSelectOrder }: LiveOrdersProps) {
         { event: '*', schema: 'public', table: 'orders' },
         (payload) => {
           const { eventType, new: newRow, old: oldRow } = payload;
-
           if (eventType === 'INSERT') {
             setOrders((prev) => [newRow as Order, ...prev]);
           } else if (eventType === 'UPDATE') {
@@ -93,7 +87,6 @@ export default function LiveOrders({ onSelectOrder }: LiveOrdersProps) {
       )
       .subscribe((status) => {
         setRealtimeStatus(status);
-
         if (status === 'SUBSCRIBED') {
           setRealtimeStatus('connected');
           setShowWarningBanner(false);
@@ -102,7 +95,6 @@ export default function LiveOrders({ onSelectOrder }: LiveOrdersProps) {
             disconnectTimerRef.current = null;
           }
         } else {
-          // If not subscribed, start a 60s timer to show the "live updates paused" banner
           setRealtimeStatus('disconnected');
           if (!disconnectTimerRef.current) {
             disconnectTimerRef.current = setTimeout(() => {
@@ -112,11 +104,7 @@ export default function LiveOrders({ onSelectOrder }: LiveOrdersProps) {
         }
       });
 
-    // 2. Set up fallback polling (every 5 seconds) if Realtime is not active/connected.
-    // Reads from realtimeStatusRef (not state) to avoid stale closure — the interval
-    // is created once on mount and must not re-subscribe on every status change.
     const pollingInterval = setInterval(async () => {
-      // Contract §4.1: fall back to GET /v1/orders?since={lastSeenTimestamp} every 5 s
       if (realtimeStatusRef.current !== 'connected') {
         const latestOrder = ordersRef.current[0];
         const since = latestOrder ? latestOrder.updatedAt : new Date(Date.now() - 30000).toISOString();
@@ -133,13 +121,10 @@ export default function LiveOrders({ onSelectOrder }: LiveOrdersProps) {
                   updated = [newOrder, ...updated];
                 }
               });
-              // Sort by createdAt desc
               return updated.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
             });
           }
-        } catch (err) {
-          console.error('Fallback polling failed:', err);
-        }
+        } catch (err) {}
       }
     }, 5000);
 
@@ -150,27 +135,24 @@ export default function LiveOrders({ onSelectOrder }: LiveOrdersProps) {
         clearTimeout(disconnectTimerRef.current);
       }
     };
-    // Effect runs exactly once on mount — channel subscription must not be torn
-    // down and recreated on every status change (that would cause a reconnect loop).
   }, []);
 
-  // Formatter utilities
   const formatGhs = (pesewas: number) => {
-    return `GHS ${(pesewas / 100).toFixed(2)}`;
+    return `$ ${(pesewas / 100).toFixed(2)}`;
   };
 
   const getStatusBadge = (status: string) => {
     const s = status.toLowerCase();
     if (['paid', 'disbursed', 'delivered'].includes(s)) {
-      return <span className="badge badge-success">{status}</span>;
+      return <span className="badge-monef-success">{status.replace('_', ' ')}</span>;
     }
     if (['confirming_order', 'awaiting_payment', 'out_for_delivery', 'vendor_notified'].includes(s)) {
-      return <span className="badge badge-warning">{status}</span>;
+      return <span className="badge-monef-warning">{status.replace('_', ' ')}</span>;
     }
     if (['payment_failed', 'cancelled', 'abandoned'].includes(s)) {
-      return <span className="badge badge-danger">{status}</span>;
+      return <span className="badge-monef-error">{status.replace('_', ' ')}</span>;
     }
-    return <span className="badge badge-neutral">{status}</span>;
+    return <span className="badge-monef-neutral">{status.replace('_', ' ')}</span>;
   };
 
   const getTimeAgo = (dateStr: string) => {
@@ -183,7 +165,6 @@ export default function LiveOrders({ onSelectOrder }: LiveOrdersProps) {
     return new Date(dateStr).toLocaleDateString();
   };
 
-  // Filter logic
   const filteredOrders = orders.filter((order) => {
     const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
     const matchesChannel = channelFilter === 'all' || order.channel === channelFilter;
@@ -197,31 +178,14 @@ export default function LiveOrders({ onSelectOrder }: LiveOrdersProps) {
 
   return (
     <div style={{ animation: 'fadeIn 0.5s ease-out' }}>
-      {/* Warning banner for disconnected realtime updates */}
       {showWarningBanner && (
-        <div
-          className="flex-between"
-          style={{
-            background: 'var(--color-error-bg)',
-            border: '1px solid rgba(239, 68, 68, 0.2)',
-            borderRadius: '12px',
-            padding: '12px 20px',
-            color: 'var(--color-error)',
-            marginBottom: '24px',
-            fontSize: '0.9rem',
-            animation: 'fadeIn 0.4s ease-out',
-          }}
-        >
+        <div className="flex-between" style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '12px', padding: '12px 20px', color: 'var(--color-error)', marginBottom: '24px', fontSize: '0.9rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <WifiOff size={18} />
             <strong>Live updates paused.</strong>
             <span>Unable to establish WebSockets. Reverted to polling.</span>
           </div>
-          <button
-            onClick={() => loadInitialOrders()}
-            className="btn-secondary"
-            style={{ padding: '6px 12px', fontSize: '0.8rem', borderColor: 'rgba(239, 68, 68, 0.3)' }}
-          >
+          <button onClick={() => loadInitialOrders()} className="btn-secondary" style={{ padding: '6px 12px', fontSize: '0.8rem', borderColor: 'rgba(239, 68, 68, 0.3)' }}>
             Force Refresh
           </button>
         </div>
@@ -229,210 +193,144 @@ export default function LiveOrders({ onSelectOrder }: LiveOrdersProps) {
 
       <div className="flex-between" style={{ marginBottom: '32px' }}>
         <div>
-          <h1 style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '8px' }}>
+          <h1 style={{ fontSize: '2rem', fontWeight: 700, color: '#ffffff', marginBottom: '4px' }}>
             Live Monitoring Board
           </h1>
-          <p style={{ color: 'var(--text-secondary)' }}>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
             Watch active phone calls and USSD interactions complete in real-time.
           </p>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem' }}>
-          <span
-            style={{
-              width: '8px',
-              height: '8px',
-              borderRadius: '50%',
-              background: realtimeStatus === 'connected' ? 'var(--color-success)' : 'var(--color-warning)',
-              display: 'inline-block',
-              boxShadow: realtimeStatus === 'connected' ? '0 0 10px var(--color-success)' : 'none',
-            }}
-          />
-          <span style={{ color: 'var(--text-secondary)', textTransform: 'capitalize' }}>
-            Realtime: {realtimeStatus}
-          </span>
-        </div>
       </div>
 
-      {/* Filter / Search panel */}
-      <div
-        className="glass-panel"
-        style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: '16px',
-          alignItems: 'center',
-          marginBottom: '24px',
-          padding: '16px 20px',
-        }}
-      >
-        <div style={{ flex: 1, minWidth: '240px', position: 'relative' }}>
-          <Search size={18} color="var(--text-muted)" style={{ position: 'absolute', left: '12px', top: '13px' }} />
-          <input
-            type="text"
-            placeholder="Search by phone or Order ID..."
-            value={searchPhone}
-            onChange={(e) => setSearchPhone(e.target.value)}
-            className="premium-input"
-            style={{ paddingLeft: '40px' }}
-          />
-        </div>
-
-        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Filter size={16} color="var(--text-secondary)" />
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="premium-input"
-              style={{ padding: '8px 12px', width: '160px', background: 'var(--bg-tertiary)' }}
-            >
-              <option value="all">All Statuses</option>
-              <option value="collecting_items">Collecting Items</option>
-              <option value="confirming_order">Confirming Order</option>
-              <option value="awaiting_payment">Awaiting Payment</option>
-              <option value="paid">Paid</option>
-              <option value="vendor_notified">Vendor Notified</option>
-              <option value="out_for_delivery">Out For Delivery</option>
-              <option value="delivered">Delivered</option>
-              <option value="disbursed">Disbursed</option>
-              <option value="payment_failed">Payment Failed</option>
-              <option value="cancelled">Cancelled</option>
-              <option value="abandoned">Abandoned</option>
-            </select>
-          </div>
-
-          <select
-            value={channelFilter}
-            onChange={(e) => setChannelFilter(e.target.value)}
-            className="premium-input"
-            style={{ padding: '8px 12px', width: '130px', background: 'var(--bg-tertiary)' }}
-          >
-            <option value="all">All Channels</option>
-            <option value="voice">Voice Call</option>
-            <option value="ussd">USSD Session</option>
-          </select>
-        </div>
-      </div>
-
-      {isLoading && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '200px' }}>
-          <div style={{
-            width: '40px',
-            height: '40px',
-            borderRadius: '50%',
-            border: '3px solid var(--bg-tertiary)',
-            borderTopColor: 'var(--accent-primary)',
-            animation: 'spin 1s linear infinite'
-          }} />
-        </div>
-      )}
-
-      {error && (
-        <div className="glass-panel" style={{ borderColor: 'var(--color-error)', background: 'var(--color-error-bg)', color: 'var(--text-primary)' }}>
-          <h3 style={{ color: 'var(--color-error)', fontWeight: 600, marginBottom: '8px' }}>Failed to retrieve orders</h3>
-          <p>{error}</p>
-        </div>
-      )}
-
-      {!isLoading && !error && (
-        <>
-          {filteredOrders.length === 0 ? (
-            <div
-              className="glass-panel"
-              style={{
-                textAlign: 'center',
-                padding: '48px',
-                borderStyle: 'dashed',
-                background: 'transparent',
-                color: 'var(--text-secondary)',
-              }}
-            >
-              No orders found matching the filter criteria.
+      <div style={{ display: 'flex', gap: '24px', alignItems: 'flex-start' }}>
+        
+        {/* LEFT COLUMN (~30% width) */}
+        <div style={{ flex: '0 0 32%', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          
+          <div className="glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <div className="flex-between">
+              <span style={{ fontSize: '1.1rem', fontWeight: 600, color: '#fff' }}>Status</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)', padding: '6px 12px', borderRadius: '99px', fontSize: '0.75rem' }}>
+                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: realtimeStatus === 'connected' ? 'var(--color-success)' : 'var(--color-warning)', display: 'inline-block', boxShadow: realtimeStatus === 'connected' ? '0 0 10px rgba(16, 185, 129, 0.5)' : 'none' }} />
+                <span style={{ color: 'var(--text-secondary)', textTransform: 'capitalize' }}>
+                  {realtimeStatus}
+                </span>
+              </div>
             </div>
-          ) : (
+            
+            <div style={{ position: 'relative' }}>
+              <Search size={18} color="var(--text-muted)" style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)' }} />
+              <input
+                type="text"
+                placeholder="Search phone or ID..."
+                value={searchPhone}
+                onChange={(e) => setSearchPhone(e.target.value)}
+                className="premium-input"
+                style={{ paddingLeft: '44px', background: 'rgba(255,255,255,0.02)' }}
+              />
+            </div>
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {filteredOrders.map((order) => (
-                <div
-                  key={order.id}
-                  className="glass-panel"
-                  onClick={() => onSelectOrder(order.id)}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '16px 24px',
-                    cursor: 'pointer',
-                    gap: '20px',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flex: 1, minWidth: 0 }}>
-                    <div
-                      style={{
-                        width: '40px',
-                        height: '40px',
-                        borderRadius: '10px',
-                        background:
-                          order.channel === 'voice'
-                            ? 'rgba(99, 102, 241, 0.1)'
-                            : 'rgba(6, 182, 212, 0.1)',
-                        color: order.channel === 'voice' ? 'var(--accent-primary)' : 'var(--accent-secondary)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexShrink: 0,
-                      }}
-                    >
-                      {order.channel === 'voice' ? <PhoneCall size={20} /> : <Laptop size={20} />}
-                    </div>
+              <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Filter by Status</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', padding: '8px 16px' }}>
+                <Filter size={14} color="var(--text-secondary)" />
+                <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ width: '100%', background: 'transparent', border: 'none', color: 'var(--text-primary)', outline: 'none', fontSize: '0.9rem', padding: '4px 0', WebkitAppearance: 'none' }}>
+                  <option value="all">All Statuses</option>
+                  <option value="collecting_items">Collecting Items</option>
+                  <option value="confirming_order">Confirming Order</option>
+                  <option value="paid">Paid</option>
+                  <option value="out_for_delivery">Out For Delivery</option>
+                </select>
+              </div>
+            </div>
 
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                        <span style={{ fontWeight: 700, color: '#ffffff', fontSize: '1rem' }}>
-                          {order.customerPhone}
-                        </span>
-                        <span
-                          style={{
-                            color: 'var(--text-muted)',
-                            fontSize: '0.75rem',
-                            background: 'rgba(255,255,255,0.05)',
-                            padding: '2px 6px',
-                            borderRadius: '4px',
-                            fontFamily: 'monospace',
-                          }}
-                        >
-                          ID: {order.id.slice(0, 8)}
-                        </span>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.85rem' }}>
-                        <span style={{ color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          <span>Created {getTimeAgo(order.createdAt)}</span>
-                        </span>
-                      </div>
-                    </div>
-                  </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Filter by Channel</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', padding: '8px 16px' }}>
+                <PhoneCall size={14} color="var(--text-secondary)" />
+                <select value={channelFilter} onChange={(e) => setChannelFilter(e.target.value)} style={{ width: '100%', background: 'transparent', border: 'none', color: 'var(--text-primary)', outline: 'none', fontSize: '0.9rem', padding: '4px 0', WebkitAppearance: 'none' }}>
+                  <option value="all">All Channels</option>
+                  <option value="voice">Voice Call</option>
+                  <option value="ussd">USSD Session</option>
+                </select>
+              </div>
+            </div>
+            
+          </div>
+        </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontWeight: 800, color: '#ffffff', fontSize: '1.05rem', marginBottom: '4px' }}>
-                        {formatGhs(order.totalInPesewas)}
-                      </div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                        Fee: {formatGhs(order.serviceFeeInPesewas)}
-                      </div>
-                    </div>
-
-                    <div style={{ width: '140px', display: 'flex', justifyContent: 'flex-end' }}>
-                      {getStatusBadge(order.status)}
-                    </div>
-
-                    <ChevronRight size={20} color="var(--text-muted)" />
-                  </div>
-                </div>
-              ))}
+        {/* RIGHT COLUMN (~70% width) */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          
+          {isLoading && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '200px' }}>
+              <div style={{ width: '40px', height: '40px', borderRadius: '50%', border: '3px solid var(--bg-tertiary)', borderTopColor: 'var(--accent-primary)', animation: 'spin 1s linear infinite' }} />
             </div>
           )}
-        </>
-      )}
+
+          {error && (
+            <div className="glass-panel" style={{ borderColor: 'var(--color-error)', background: 'rgba(239, 68, 68, 0.05)', color: 'var(--text-primary)' }}>
+              <h3 style={{ color: 'var(--color-error)', fontWeight: 600, marginBottom: '8px' }}>Failed to retrieve orders</h3>
+              <p>{error}</p>
+            </div>
+          )}
+
+          {!isLoading && !error && (
+            <div className="glass-panel" style={{ padding: '0', overflow: 'hidden' }}>
+              <table className="monef-table">
+                <thead>
+                  <tr>
+                    <th style={{ paddingLeft: '24px' }}>Customer / ID</th>
+                    <th>Channel</th>
+                    <th>Time</th>
+                    <th>Total / Fee</th>
+                    <th>Status</th>
+                    <th style={{ paddingRight: '24px', textAlign: 'right' }}>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredOrders.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} style={{ textAlign: 'center', padding: '48px', color: 'var(--text-secondary)' }}>
+                        No orders found matching the filter criteria.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredOrders.map((order) => (
+                      <tr key={order.id} onClick={() => onSelectOrder(order.id)} style={{ cursor: 'pointer' }}>
+                        <td style={{ paddingLeft: '24px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: order.channel === 'voice' ? 'rgba(139, 92, 246, 0.1)' : 'rgba(16, 185, 129, 0.1)', color: order.channel === 'voice' ? 'var(--accent-primary)' : 'var(--accent-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              {order.channel === 'voice' ? <PhoneCall size={16} /> : <Laptop size={16} />}
+                            </div>
+                            <div>
+                              <div style={{ fontWeight: 600, color: '#ffffff' }}>{order.customerPhone}</div>
+                              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>ID: {order.id.slice(0, 8)}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td style={{ textTransform: 'capitalize', color: 'var(--text-secondary)' }}>{order.channel}</td>
+                        <td style={{ color: 'var(--text-secondary)' }}>{getTimeAgo(order.createdAt)}</td>
+                        <td>
+                          <div style={{ fontWeight: 600, color: '#ffffff' }}>{formatGhs(order.totalInPesewas)}</div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Fee: {formatGhs(order.serviceFeeInPesewas)}</div>
+                        </td>
+                        <td>{getStatusBadge(order.status)}</td>
+                        <td style={{ paddingRight: '24px', textAlign: 'right' }}>
+                          <button style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
+                            <MoreHorizontal size={18} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+        </div>
+      </div>
     </div>
   );
 }
