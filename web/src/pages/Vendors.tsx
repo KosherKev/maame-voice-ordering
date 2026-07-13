@@ -235,42 +235,50 @@ export default function Vendors() {
               No vendors registered yet. Use the panel on the left to add your first vendor.
             </div>
           ) : (
-            <div className="glass-panel" style={{ padding: 0, overflow: 'hidden' }}>
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <div className="glass-panel" style={{ padding: 0 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px', padding: '24px' }}>
                 {currentVendors.map((vendor) => {
                   const isEditing = editingId === vendor.id;
                   return (
-                    <div key={vendor.id} style={{ padding: '24px', borderBottom: '1px solid rgba(255,255,255,0.05)', borderLeft: vendor.active ? '4px solid var(--accent-primary)' : '4px solid var(--color-error)' }}>
+                    <div key={vendor.id} style={{ 
+                      padding: '20px', 
+                      border: '1px solid rgba(255,255,255,0.05)', 
+                      borderRadius: '16px', 
+                      background: 'rgba(255,255,255,0.02)',
+                      borderTop: vendor.active ? '4px solid var(--accent-primary)' : '4px solid var(--color-error)',
+                      display: 'flex',
+                      flexDirection: 'column'
+                    }}>
                       {isEditing ? (
-                        <form onSubmit={(e) => handleSaveEdit(e, vendor.id)} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '16px', alignItems: 'end' }}>
+                        <form onSubmit={(e) => handleSaveEdit(e, vendor.id)} style={{ display: 'flex', flexDirection: 'column', gap: '16px', flex: 1 }}>
                           <div>
                             <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>Name</label>
-                            <input type="text" required value={name} onChange={(e) => setName(e.target.value)} className="premium-input" />
+                            <input type="text" required value={name} onChange={(e) => setName(e.target.value)} className="premium-input" style={{ width: '100%' }} />
                           </div>
                           <div>
                             <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>Momo Phone</label>
-                            <input type="tel" required value={phone} onChange={(e) => setPhone(e.target.value)} className="premium-input" />
+                            <input type="tel" required value={phone} onChange={(e) => setPhone(e.target.value)} className="premium-input" style={{ width: '100%' }} />
                           </div>
                           <div>
                             <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>Network</label>
-                            <select value={momoChannel} onChange={(e) => setMomoChannel(e.target.value as any)} className="premium-input" style={{ WebkitAppearance: 'none' }}>
+                            <select value={momoChannel} onChange={(e) => setMomoChannel(e.target.value as any)} className="premium-input" style={{ WebkitAppearance: 'none', width: '100%' }}>
                               <option value="mtn">MTN</option>
                               <option value="telecel">Telecel</option>
                               <option value="at">AT</option>
                             </select>
                           </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', height: '42px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <input type="checkbox" id={`active-${vendor.id}`} checked={active} onChange={(e) => setActive(e.target.checked)} />
                             <label htmlFor={`active-${vendor.id}`} style={{ fontSize: '0.85rem', color: 'var(--text-primary)' }}>Active</label>
                           </div>
-                          <div style={{ display: 'flex', gap: '8px', gridColumn: '1 / -1', marginTop: '8px' }}>
-                            <button type="submit" className="btn-primary" style={{ padding: '8px 16px', fontSize: '0.85rem' }}><Check size={16} /> Save Changes</button>
-                            <button type="button" onClick={cancelEdit} className="btn-secondary" style={{ padding: '8px 16px', fontSize: '0.85rem' }}><X size={16} /> Cancel</button>
+                          <div style={{ display: 'flex', gap: '8px', marginTop: 'auto', paddingTop: '16px', borderTop: '1px dashed rgba(255,255,255,0.05)' }}>
+                            <button type="submit" className="btn-primary" style={{ padding: '8px', fontSize: '0.85rem', flex: 1, justifyContent: 'center' }}><Check size={16} /></button>
+                            <button type="button" onClick={cancelEdit} className="btn-secondary" style={{ padding: '8px', fontSize: '0.85rem', flex: 1, justifyContent: 'center' }}><X size={16} /></button>
                           </div>
                         </form>
                       ) : (
-                        <div className="flex-between" style={{ flexWrap: 'wrap', gap: '16px' }}>
-                          <div>
+                        <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                          <div style={{ flex: 1 }}>
                             <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#ffffff', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '12px' }}>
                               {vendor.name}
                               {vendor.active ? (
@@ -291,11 +299,11 @@ export default function Vendors() {
                               </span>
                             </p>
                           </div>
-                          <div style={{ display: 'flex', gap: '8px' }}>
-                            <button onClick={() => startEdit(vendor)} className="btn-secondary" style={{ padding: '8px 16px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <div style={{ display: 'flex', gap: '8px', marginTop: '20px', paddingTop: '16px', borderTop: '1px dashed rgba(255,255,255,0.05)' }}>
+                            <button onClick={() => startEdit(vendor)} className="btn-secondary" style={{ padding: '8px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', flex: 1 }}>
                               <Edit2 size={14} /> Edit
                             </button>
-                            <button onClick={() => handleDelete(vendor.id)} className="btn-secondary" style={{ padding: '8px 16px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px', borderColor: 'rgba(239, 68, 68, 0.2)', color: 'var(--color-error)' }} onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)'; e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.4)'; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)'; e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.2)'; }}>
+                            <button onClick={() => handleDelete(vendor.id)} className="btn-secondary" style={{ padding: '8px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', flex: 1, borderColor: 'rgba(239, 68, 68, 0.2)', color: 'var(--color-error)' }} onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)'; e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.4)'; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)'; e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.2)'; }}>
                               <Trash2 size={14} /> Delete
                             </button>
                           </div>
