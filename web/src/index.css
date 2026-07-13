@@ -3,41 +3,34 @@
 :root {
   --font-sans: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   
-  /* Cosmic Dark Palette */
-  --bg-primary: #0a0c16;
-  --bg-secondary: #111428;
-  --bg-tertiary: #191e3b;
-  --bg-glass: rgba(17, 20, 40, 0.7);
-  --bg-glass-hover: rgba(25, 30, 59, 0.8);
+  /* MONEF Exact Dark Palette */
+  --bg-main: #2b2b36; /* Desktop background surrounding app */
+  --bg-primary: #151624; /* App main background */
+  --bg-secondary: #1e1e2d; /* Sidebar & cards */
+  --bg-tertiary: #27273a; /* Hover states, inputs */
   
-  --border-color: rgba(255, 255, 255, 0.08);
-  --border-color-active: rgba(99, 102, 241, 0.4);
+  --border-color: rgba(255, 255, 255, 0.04);
+  --border-color-active: rgba(139, 92, 246, 0.3);
   
-  --text-primary: #f8fafc;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
+  --text-primary: #ffffff;
+  --text-secondary: #a0a0b2;
+  --text-muted: #6b6b7a;
   
-  /* Vibrant Accents */
-  --accent-primary: #6366f1; /* Indigo */
-  --accent-primary-glow: rgba(99, 102, 241, 0.35);
-  --accent-secondary: #06b6d4; /* Cyan */
-  --accent-secondary-glow: rgba(6, 182, 212, 0.35);
+  /* MONEF Accents */
+  --accent-primary: #8b5cf6; /* Neon Purple */
+  --accent-primary-glow: rgba(139, 92, 246, 0.25);
+  --accent-secondary: #10b981; /* Neon Green */
+  --accent-secondary-glow: rgba(16, 185, 129, 0.25);
   
   /* Status Colors */
   --color-success: #10b981;
-  --color-success-bg: rgba(16, 185, 129, 0.1);
   --color-warning: #f59e0b;
-  --color-warning-bg: rgba(245, 158, 11, 0.1);
   --color-error: #ef4444;
-  --color-error-bg: rgba(239, 68, 68, 0.1);
   --color-info: #3b82f6;
-  --color-info-bg: rgba(59, 130, 246, 0.1);
   
-  /* Animations & Shadows */
-  --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  --shadow-premium: 0 10px 30px -10px rgba(0, 0, 0, 0.7);
-  --shadow-glow: 0 0 20px rgba(99, 102, 241, 0.15);
-  --border-glass: 1px solid rgba(255, 255, 255, 0.07);
+  /* Shadows & Effects */
+  --transition-smooth: all 0.25s ease;
+  --shadow-monef: 0 10px 40px rgba(0, 0, 0, 0.4);
 }
 
 * {
@@ -48,7 +41,7 @@
 
 body {
   font-family: var(--font-sans);
-  background-color: var(--bg-primary);
+  background-color: var(--bg-main); /* The outer background if we want floating app effect */
   color: var(--text-primary);
   min-height: 100vh;
   overflow-x: hidden;
@@ -56,116 +49,85 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Scrollbar styling */
+/* Scrollbar */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
-
 ::-webkit-scrollbar-track {
-  background: var(--bg-primary);
+  background: transparent;
 }
-
 ::-webkit-scrollbar-thumb {
   background: var(--bg-tertiary);
-  border-radius: 4px;
+  border-radius: 10px;
 }
-
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--accent-primary);
+  background: var(--text-muted);
 }
 
-/* Animations */
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+/* Base App Wrapper for floating desktop effect */
+.monef-app-container {
+  display: flex;
+  background-color: var(--bg-primary);
+  background-image: 
+    radial-gradient(circle at 10% 20%, rgba(139, 92, 246, 0.15), transparent 40%),
+    radial-gradient(circle at 90% 80%, rgba(16, 185, 129, 0.12), transparent 40%),
+    radial-gradient(circle at 70% 10%, rgba(139, 92, 246, 0.08), transparent 30%);
+  min-height: 100vh;
+  width: 100%;
 }
 
-@keyframes pulse-glow {
-  0%, 100% { box-shadow: 0 0 15px rgba(99, 102, 241, 0.2); }
-  50% { box-shadow: 0 0 25px rgba(99, 102, 241, 0.4); }
-}
-
-@keyframes pulse-dot {
-  0%, 100% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.3); opacity: 0.6; }
-}
-
-/* Premium Card / Glassmorphism styles */
+/* MONEF Card */
 .glass-panel {
-  background: var(--bg-glass);
+  background: rgba(30, 30, 45, 0.4);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: var(--border-glass);
-  border-radius: 16px;
+  border-radius: 20px;
   padding: 24px;
-  box-shadow: var(--shadow-premium);
+  border: 1px solid var(--border-color);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
   transition: var(--transition-smooth);
 }
 
-.glass-panel:hover {
-  border-color: rgba(255, 255, 255, 0.12);
-  transform: translateY(-2px);
-}
-
-.glass-panel-active {
-  border-color: var(--accent-primary);
-  box-shadow: var(--shadow-glow);
-}
-
-/* Input Fields styling */
+/* MONEF Inputs */
 .premium-input {
   width: 100%;
   padding: 12px 16px;
   background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 99px; /* MONEF uses very rounded inputs */
   color: var(--text-primary);
   font-family: var(--font-sans);
   font-size: 0.95rem;
   transition: var(--transition-smooth);
   outline: none;
 }
-
 .premium-input:focus {
   background: rgba(255, 255, 255, 0.05);
   border-color: var(--accent-primary);
   box-shadow: 0 0 0 3px var(--accent-primary-glow);
 }
 
-/* Premium Buttons */
+/* MONEF Buttons */
 .btn-primary {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 12px 24px;
-  background: linear-gradient(135deg, var(--accent-primary), #4f46e5);
+  padding: 10px 24px;
+  background: var(--accent-primary);
   color: #ffffff;
   border: none;
-  border-radius: 10px;
+  border-radius: 99px;
   font-family: var(--font-sans);
-  font-weight: 600;
-  font-size: 0.95rem;
+  font-weight: 500;
+  font-size: 0.9rem;
   cursor: pointer;
   transition: var(--transition-smooth);
-  box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
 }
-
 .btn-primary:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.45);
-}
-
-.btn-primary:active {
-  transform: translateY(1px);
-}
-
-.btn-primary:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  transform: none;
-  box-shadow: none;
+  background: #7c3aed;
+  box-shadow: 0 0 15px var(--accent-primary-glow);
 }
 
 .btn-secondary {
@@ -173,93 +135,116 @@ body {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 12px 24px;
-  background: rgba(255, 255, 255, 0.04);
+  padding: 10px 24px;
+  background: rgba(255, 255, 255, 0.05);
   color: var(--text-primary);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 10px;
+  border-radius: 99px;
   font-family: var(--font-sans);
   font-weight: 500;
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   cursor: pointer;
   transition: var(--transition-smooth);
 }
-
 .btn-secondary:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.1);
 }
 
-.btn-danger {
+/* Badges */
+.badge-monef-success {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 12px 24px;
-  background: linear-gradient(135deg, var(--color-error), #b91c1c);
-  color: #ffffff;
-  border: none;
-  border-radius: 10px;
-  font-family: var(--font-sans);
-  font-weight: 600;
-  font-size: 0.95rem;
-  cursor: pointer;
-  transition: var(--transition-smooth);
-  box-shadow: 0 4px 15px rgba(239, 68, 68, 0.3);
-}
-
-.btn-danger:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(239, 68, 68, 0.45);
-}
-
-.btn-danger:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  transform: none;
-  box-shadow: none;
-}
-
-/* Badge styles */
-.badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
   padding: 4px 10px;
-  border-radius: 9999px;
+  border-radius: 6px;
   font-size: 0.75rem;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+}
+.badge-monef-error {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.badge-monef-warning {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.badge-monef-neutral {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
 }
 
-.badge-success { background: var(--color-success-bg); color: var(--color-success); border: 1px solid rgba(16, 185, 129, 0.2); }
-.badge-warning { background: var(--color-warning-bg); color: var(--color-warning); border: 1px solid rgba(245, 158, 11, 0.2); }
-.badge-danger { background: var(--color-error-bg); color: var(--color-error); border: 1px solid rgba(239, 68, 68, 0.2); }
-.badge-info { background: var(--color-info-bg); color: var(--color-info); border: 1px solid rgba(59, 130, 246, 0.2); }
-.badge-neutral { background: rgba(255, 255, 255, 0.05); color: var(--text-secondary); border: 1px solid rgba(255, 255, 255, 0.08); }
+/* Tables (MONEF style lists) */
+.monef-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0 8px;
+}
+.monef-table th {
+  text-align: left;
+  padding: 12px 16px;
+  color: var(--text-muted);
+  font-weight: 500;
+  font-size: 0.85rem;
+  border-bottom: 1px solid var(--border-color);
+}
+.monef-table td {
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.015);
+  font-size: 0.9rem;
+  color: var(--text-primary);
+}
+.monef-table tr td:first-child {
+  border-top-left-radius: 12px;
+  border-bottom-left-radius: 12px;
+}
+.monef-table tr td:last-child {
+  border-top-right-radius: 12px;
+  border-bottom-right-radius: 12px;
+}
+.monef-table tbody tr:hover td {
+  background: rgba(255, 255, 255, 0.04);
+}
 
-/* Layout utilities */
+/* Layout Utilities */
 .flex-between {
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
 
-.grid-cols-3 {
+.grid-monef {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 24px;
+  gap: 20px;
 }
 
-@media (max-width: 1024px) {
-  .grid-cols-3 {
-    grid-template-columns: repeat(2, 1fr);
+@media (max-width: 1200px) {
+  .grid-monef {
+    grid-template-columns: 1fr 1fr;
   }
 }
 
-@media (max-width: 640px) {
-  .grid-cols-3 {
+@media (max-width: 768px) {
+  .grid-monef {
     grid-template-columns: 1fr;
   }
 }
