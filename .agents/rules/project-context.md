@@ -9,6 +9,7 @@ Maame is a voice- and USSD-first commerce platform for Ghana. A customer calls a
 - **`MAAME_SPEC.md`** — product spec: roles, channels, data entities, order state machine, open design decisions (Gaps G-1 through G-5)
 - **`MAAME_API_CONTRACT.md`** — the API contract. Every endpoint, error, event, and data model shape. **This is the single source of truth for implementation.** If code and contract disagree, the contract wins — update the contract first, then the code.
 - **`MAAME_API_BUILD_PLAN.md`** — the phase-by-phase build order with acceptance criteria. Do not start a phase before the previous one's acceptance criteria are met.
+- **`MAAME_VOICE_HARNESS_SPEC.md`**, **`MAAME_VOICE_HARNESS_API_CONTRACT.md`**, **`MAAME_VOICE_HARNESS_BUILD_PLAN.md`** — a separate, satellite spec/contract/plan for the local dev-only voice test harness (`tools/voice-harness/`). This is **not part of the product** — it's a testing tool that reuses `AsrClient`/`LlmClient`/`TtsClient` to exercise the voice pipeline without a live Africa's Talking call. Never conflate its gaps (H-1, H-2, H-3) with the main contract's (G-1 through G-11), and never let it influence `MAAME_API_CONTRACT.md`.
 
 ## Tech stack
 
@@ -58,6 +59,9 @@ maame/
 │   ├── middleware/         # error handler, auth, idempotency, rate limit, request-id
 │   └── server.ts
 ├── web/                    # admin dashboard frontend
+├── tools/
+│   └── voice-harness/      # dev-only voice test harness — see MAAME_VOICE_HARNESS_*.md. Never imported by src/.
+│       └── client/         # static HTML page, MediaRecorder-based
 └── tests/
 ```
 
@@ -76,3 +80,4 @@ maame/
 - **No custom auth code**: never write JWT signing, password hashing, or session/refresh logic — that's Supabase Auth's job. The backend only verifies tokens Supabase already issued (G-10).
 - **Row Level Security is not optional on any Supabase-direct table**: `vendors` and `products` must have RLS enabled with an explicit, tested policy before they're usable — a table with RLS off is effectively public.
 - **Vendors and Products have no custom backend code**: don't build Express controllers, services, or routes for these two resources — that logic doesn't exist in this system anymore (G-10). The custom backend only *reads* them (via Prisma) when matching catalog items.
+- **`tools/voice-harness/` is one-directional and production-inert**: it may import from `src/`, `src/` must never import from it. Its routes must be structurally unreachable when `NODE_ENV === 'production'` (not just unauthenticated — unmounted entirely). It must never call real Moolre payment/SMS/transfer endpoints — always through the mock services described in `MAAME_VOICE_HARNESS_API_CONTRACT.md` §5 (H-1). Treat any PR that blurs this boundary (e.g. adding an `if (isHarness)` branch inside a production service) as a review blocker, not a style nit.

@@ -56,3 +56,4 @@ This project uses three personas. Every conversation in this repo should be cond
 **Constraints**:
 - Never approves a phase where an "unconfirmed" third-party integration detail (G-6, G-7, G-8) was implemented on a guess instead of a verified shape.
 - Outputs a clear ✅ LGTM or ❌ BLOCK with file/line/reason — never a vague "looks mostly fine."
+- For any change touching `tools/voice-harness/`: blocks on sight if production code (`src/`) imports from the harness, if a mock boundary (H-1) is bypassed with a conditional branch instead of dependency injection, or if the harness routes are reachable when `NODE_ENV=production` — see `.agents/skills/dev-voice-harness.md`.
