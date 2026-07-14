@@ -238,11 +238,28 @@ Response **must** be `application/json`:
 
 ### 7.2 GhanaNLP Khaya API (ASR + TTS)
 
-- Base: `https://translation.ghananlp.org` (confirmed from their developer portal and Python SDK).
-- Auth: API key issued on signup.
+- Developer portal: `https://translation.ghananlp.org` (Azure API Management). Auth header: `Ocp-Apim-Subscription-Key: <key>`.
 - Plan: Standard tier, $89.95/month, 20,000 requests/month, one request = one call regardless of audio duration (confirmed directly with GhanaNLP).
-- Conceptual shape (from the official Python library): STT takes an audio file + language code (e.g. `"tw"` for Twi) and returns transcribed text; TTS takes text + language code and returns audio binary; Translation takes text + a language pair (e.g. `"en-tw"`).
-- **Not confirmed**: the exact raw HTTP request/response JSON shape (their browser-rendered docs at `/api-docs` couldn't be captured via automated fetch). Confirm exact field names against the live developer portal before implementation — this is Gap G-8 (§8). Do not guess field names; the contract will be updated once confirmed.
+
+#### ASR v3 — ✅ G-8 Resolved (confirmed from live portal, 2026-07-14)
+
+- **GET** `https://translation-api.ghananlp.org/asr/v3/languages` — returns `{ languages: [{ code: string, name: string }] }`. Language codes are ISO 639-3 (e.g. `"twi"` for Twi, `"ewe"` for Ewe).
+- **POST** `https://translation-api.ghananlp.org/asr/v3/transcribe?language={code}[&timestamps=word|segment]`
+  - **Request body**: raw audio bytes (not multipart/form-data). `Content-Type` must be one of `audio/mpeg`, `audio/wav`, `audio/flac`, `audio/ogg`.
+  - **language** is a **URL template/query parameter**, not a form field.
+  - **Response 200**: `{ "text": "transcribed text" }` (with optional `timings` object when `timestamps` param is set).
+  - **Response 400**: `{ error: { code: "VALIDATION_FAILED", message: string, details: [{ code: "EMPTY_AUDIO" | "UNSUPPORTED_LANGUAGE" | "INVALID_AUDIO_FORMAT" | "INVALID_TIMESTAMPS" | "UNSUPPORTED_TIMESTAMPS", target: string, message: string }] } }`
+  - **Response 500**: `{ error: { code: "SYSTEM_ERROR", message: string, details: [] } }`
+
+#### TTS v2 — ✅ G-8 Resolved (confirmed from live portal, 2026-07-14)
+
+- **GET** `https://translation-api.ghananlp.org/tts/v2/speakers` — returns available speaker IDs (e.g. `male_low`, `male_high`, `female`).
+- **GET** `https://translation-api.ghananlp.org/tts/v2/languages` — returns supported language codes (e.g. `"twi"`).
+- **POST** `https://translation-api.ghananlp.org/tts/v2/synthesize`
+  - **Request body (JSON)**: `{ "text": string, "language": string, "speaker_id"?: string, "stream"?: boolean, "format"?: "wav" | "mp3" | "ogg" }`
+  - **Response 200**: Raw audio bytes matching the requested `format`.
+  - **Response 400**: `{ error: { code: "VALIDATION_FAILED", message: string, details: [{ code: "EMPTY_TEXT" | "MISSING_LANGUAGE" | "UNSUPPORTED_LANGUAGE" | "INVALID_SPEAKER" | "INVALID_REQUEST", target: string, message: string }] } }`
+  - **Response 500**: `{ error: { code: "SYSTEM_ERROR", message: string, details: [] } }`
 
 ### 7.3 LLM Provider (Claude Haiku 4.5 / Gemini 2.5 Flash-Lite)
 
@@ -279,7 +296,7 @@ Carried forward from `MAAME_SPEC.md` §8 (G-1 through G-5), plus gaps found whil
 - **G-5** (spec): LLM provider swappable via `LlmClient` interface. **Contract impact**: no public endpoint exposes provider choice; it's an internal/ops config concern, not part of the versioned API surface.
 - **G-6** (new): Africa's Talking's exact real-time audio-streaming webhook shape (vs. simple DTMF) isn't confirmed from public docs (JS-rendered pages blocked automated fetch). **Resolution**: confirm against the live AT dashboard/account before Phase 3 (voice channel) implementation begins; do not hardcode assumed field names into the ASR pipeline until verified.
 - **G-7** ✅ **Resolved**: Moolre does offer full USSD application hosting (shared code `*203*{ext}#` or dedicated shortcode). Inbound webhook shape confirmed from the live Moolre dashboard simulator and docs — see §5.8 for the exact payload. Moolre's simulator POSTs the same JSON payload to your callback URL that production does, allowing end-to-end local testing without a real handset. Network codes: 3=MTN, 5=AirtelTigo, 6=Telecel. Dev CORS note documented in §5.8.
-- **G-8** (new): Khaya's exact raw HTTP request/response JSON (vs. the Python SDK's abstracted method signatures) isn't confirmed. **Resolution**: confirm against the Khaya developer portal (requires signup) before Phase 3 implementation; the internal `AsrClient`/`TtsClient` interfaces should wrap whatever the real shape turns out to be, so the rest of the codebase never depends on Khaya's wire format directly.
+- **G-8** ✅ **Resolved**: Khaya's ASR v3 and TTS v2 wire formats were confirmed from the live developer portal (2026-07-14) — see §7.2. The internal `AsrClient`/`TtsClient` interfaces were updated to match the real shape, insulating the rest of the codebase from the wire format.
 - **G-9** (new): Neither Africa's Talking nor Moolre document cryptographic webhook signatures. **Resolution**: see §10 — shared secret in the callback URL query string plus source-IP allowlisting, with a migration path to signature verification if either provider adds it later.
 - **G-10** (new — architecture decision, replaces the original Postgres/Prisma-only/custom-JWT/custom-WebSocket design): the system moved to Supabase for Auth, Realtime, and (for Vendors/Products only) direct database access via RLS instead of custom endpoints. **Resolution**: custom `/v1/auth/*` endpoints removed entirely (§5.1); Vendors and Products CRUD removed from the custom backend and replaced with RLS policies (§5.2, §5.3); the custom WebSocket server removed and replaced with Supabase Realtime subscriptions (§4.1). Everything with real business logic (orders, fulfillments, reconciliation, sessions, all provider webhooks) stays on the custom Express backend, since Supabase's auto-API isn't a fit for multi-step state transitions or third-party orchestration. **Impact**: Prisma is retained but scoped only to the tables the custom backend owns; RLS policies become part of this contract's security surface and must be reviewed with the same rigor as endpoint code (see §10).
 - **G-11** (new): Redis, originally proposed for the idempotency key store, is dropped in favor of a `idempotency_keys` Postgres table in the same Supabase database, with a scheduled cleanup job. **Resolution**: removes a piece of infrastructure with no loss of correctness at this system's volume (low thousands of orders/month per the unit economics model) — revisit only if idempotency-check latency becomes a measured problem.

@@ -5,7 +5,7 @@ import { UpstreamProviderError } from '../../errors/index.js';
 export class KhayaTtsClient implements TtsClient {
   async synthesize(text: string, languageCode: string): Promise<Buffer> {
     try {
-      const response = await fetch('https://translation-api.ghananlp.org/v1/tts/synthesize', {
+      const response = await fetch('https://translation-api.ghananlp.org/tts/v2/synthesize', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -14,6 +14,8 @@ export class KhayaTtsClient implements TtsClient {
         body: JSON.stringify({
           text,
           language: languageCode,
+          format: 'wav',
+          stream: false,
         }),
       });
 
