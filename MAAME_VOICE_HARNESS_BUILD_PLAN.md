@@ -36,10 +36,11 @@ Sequential phases. References `MAAME_VOICE_HARNESS_API_CONTRACT.md` sections and
 
 **Goal**: a no-dependency way to actually record and send audio without curling multipart forms by hand.
 
-- [ ] `tools/voice-harness/client/index.html` — a single static page: start-session button, record button (MediaRecorder), auto-posts the clip to the current session on stop, renders the transcript/decision/order-state, plays the returned audio
+- [ ] `tools/voice-harness/client/index.html` — a single static page: start-session button, record button (MediaRecorder), auto-posts the clip to the current session on stop, renders the transcript/decision/order-state, plays the returned audio. Fetch calls use relative paths (`/dev/voice-harness/...`), not hardcoded origins.
+- [ ] Statically serve `tools/voice-harness/client/` from the same Express app at a dev-only route (e.g. `app.use('/voice-harness', express.static(...))`), behind the identical `NODE_ENV !== 'production'` guard as the API routes — **do not** rely on opening `index.html` directly as a `file://` page; it breaks relative fetches and `getUserMedia` in most browsers (contract §2, spec §8)
 - [ ] README section (or inline comment) documenting the CLI fallback: record a clip with `sox`/`arecord`, `curl -F audio=@clip.wav http://localhost:{PORT}/dev/voice-harness/sessions/{id}/turns`
 
-**Acceptance criteria**: a full multi-turn conversation (add items, confirm, mock-pay) can be driven entirely from the HTML page with no other tooling open.
+**Acceptance criteria**: opening `http://localhost:{PORT}/voice-harness/index.html` (not a `file://` URL) and driving a full multi-turn conversation (add items, confirm, mock-pay) works entirely from the browser with no CORS errors and no other tooling open.
 
 ---
 

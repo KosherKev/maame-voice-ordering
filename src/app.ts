@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import path from 'path';
 import { env } from './config/env.js';
 import { requestIdMiddleware } from './middleware/requestId.js';
 import { errorHandlerMiddleware } from './middleware/errorHandler.js';
@@ -30,6 +31,7 @@ app.use(
     credentials: true,
   }),
 );
+app.use('/voice-harness', express.static(path.join(__dirname, '../tools/voice-harness/client')));
 
 app.use(express.json());
 app.use(requestIdMiddleware);
@@ -52,9 +54,13 @@ if (env.NODE_ENV !== 'production') {
   console.warn('⚠️  BOXED WARNING: Mounting /dev/voice-harness');
   console.warn('⚠️  This is for local testing only. NOT for production.');
   console.warn('====================================================');
+  
+  const devRouter = express.Router();
+  app.use('/dev/voice-harness', devRouter);
+
   const routerPath = '../tools/voice-harness/router.js';
   import(routerPath).then(harnessModule => {
-    app.use('/dev/voice-harness', harnessModule.voiceHarnessRouter);
+    devRouter.use('/', harnessModule.voiceHarnessRouter);
   }).catch(err => {
     console.error('Failed to mount voice harness router', err);
   });
