@@ -1,6 +1,6 @@
 import { supabase } from '../supabase';
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000/v1';
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || '/v1';
 
 export class ApiError extends Error {
   type: string;

@@ -277,25 +277,33 @@ export default function Products() {
               No products available in the catalog. Use the panel on the left to add your first product.
             </div>
           ) : (
-            <div className="glass-panel" style={{ padding: 0, overflow: 'hidden' }}>
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <div className="glass-panel" style={{ padding: 0 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px', padding: '24px' }}>
                 {currentProducts.map((product) => {
                   const isEditing = editingId === product.id;
                   return (
-                    <div key={product.id} style={{ padding: '24px', borderBottom: '1px solid rgba(255,255,255,0.05)', borderLeft: product.inStock ? '4px solid var(--border-color)' : '4px solid var(--color-warning)' }}>
+                    <div key={product.id} style={{ 
+                      padding: '20px', 
+                      border: '1px solid rgba(255,255,255,0.05)', 
+                      borderRadius: '16px', 
+                      background: 'rgba(255,255,255,0.02)',
+                      borderTop: product.inStock ? '4px solid var(--border-color)' : '4px solid var(--color-warning)',
+                      display: 'flex',
+                      flexDirection: 'column'
+                    }}>
                       {isEditing ? (
-                        <form onSubmit={(e) => handleSaveEdit(e, product.id)} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '16px', alignItems: 'end' }}>
+                        <form onSubmit={(e) => handleSaveEdit(e, product.id)} style={{ display: 'flex', flexDirection: 'column', gap: '16px', flex: 1 }}>
                           <div>
                             <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>Product Name</label>
-                            <input type="text" required value={name} onChange={(e) => setName(e.target.value)} className="premium-input" />
+                            <input type="text" required value={name} onChange={(e) => setName(e.target.value)} className="premium-input" style={{ width: '100%' }} />
                           </div>
                           <div>
                             <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>Price (GHS)</label>
-                            <input type="number" step="0.01" required value={priceGhs} onChange={(e) => setPriceGhs(e.target.value)} className="premium-input" />
+                            <input type="number" step="0.01" required value={priceGhs} onChange={(e) => setPriceGhs(e.target.value)} className="premium-input" style={{ width: '100%' }} />
                           </div>
                           <div>
                             <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>Vendor</label>
-                            <select value={vendorId} onChange={(e) => setVendorId(e.target.value)} className="premium-input" style={{ WebkitAppearance: 'none' }}>
+                            <select value={vendorId} onChange={(e) => setVendorId(e.target.value)} className="premium-input" style={{ WebkitAppearance: 'none', width: '100%' }}>
                               {vendors.map((v) => (
                                 <option key={v.id} value={v.id}>{v.name}</option>
                               ))}
@@ -303,20 +311,20 @@ export default function Products() {
                           </div>
                           <div>
                             <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>Category</label>
-                            <input type="text" required value={category} onChange={(e) => setCategory(e.target.value)} className="premium-input" />
+                            <input type="text" required value={category} onChange={(e) => setCategory(e.target.value)} className="premium-input" style={{ width: '100%' }} />
                           </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', height: '42px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <input type="checkbox" id={`stock-${product.id}`} checked={inStock} onChange={(e) => setInStock(e.target.checked)} />
                             <label htmlFor={`stock-${product.id}`} style={{ fontSize: '0.85rem', color: 'var(--text-primary)' }}>In Stock</label>
                           </div>
-                          <div style={{ display: 'flex', gap: '8px', gridColumn: '1 / -1', marginTop: '8px' }}>
-                            <button type="submit" className="btn-primary" style={{ padding: '8px 16px', fontSize: '0.85rem' }}><Check size={16} /> Save Changes</button>
-                            <button type="button" onClick={cancelEdit} className="btn-secondary" style={{ padding: '8px 16px', fontSize: '0.85rem' }}><X size={16} /> Cancel</button>
+                          <div style={{ display: 'flex', gap: '8px', marginTop: 'auto', paddingTop: '16px', borderTop: '1px dashed rgba(255,255,255,0.05)' }}>
+                            <button type="submit" className="btn-primary" style={{ padding: '8px', fontSize: '0.85rem', flex: 1, justifyContent: 'center' }}><Check size={16} /></button>
+                            <button type="button" onClick={cancelEdit} className="btn-secondary" style={{ padding: '8px', fontSize: '0.85rem', flex: 1, justifyContent: 'center' }}><X size={16} /></button>
                           </div>
                         </form>
                       ) : (
-                        <div className="flex-between" style={{ flexWrap: 'wrap', gap: '16px' }}>
-                          <div>
+                        <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                          <div style={{ flex: 1 }}>
                             <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#ffffff', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '12px' }}>
                               {product.name}
                               {product.inStock ? (
@@ -333,11 +341,11 @@ export default function Products() {
                               <span>Category: {product.category}</span>
                             </p>
                           </div>
-                          <div style={{ display: 'flex', gap: '8px' }}>
-                            <button onClick={() => startEdit(product)} className="btn-secondary" style={{ padding: '8px 16px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <div style={{ display: 'flex', gap: '8px', marginTop: '20px', paddingTop: '16px', borderTop: '1px dashed rgba(255,255,255,0.05)' }}>
+                            <button onClick={() => startEdit(product)} className="btn-secondary" style={{ padding: '8px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', flex: 1 }}>
                               <Edit2 size={14} /> Edit
                             </button>
-                            <button onClick={() => handleDelete(product.id)} className="btn-secondary" style={{ padding: '8px 16px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px', borderColor: 'rgba(239, 68, 68, 0.2)', color: 'var(--color-error)' }} onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)'; e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.4)'; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)'; e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.2)'; }}>
+                            <button onClick={() => handleDelete(product.id)} className="btn-secondary" style={{ padding: '8px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', flex: 1, borderColor: 'rgba(239, 68, 68, 0.2)', color: 'var(--color-error)' }} onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)'; e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.4)'; }} onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)'; e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.2)'; }}>
                               <Trash2 size={14} /> Delete
                             </button>
                           </div>
