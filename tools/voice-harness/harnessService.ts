@@ -10,7 +10,7 @@ export class HarnessService {
   /**
    * Process a conversational turn with an audio payload.
    */
-  async processTurn(sessionId: string, audioFilePath: string): Promise<any> {
+  async processTurn(sessionId: string, audioData: Buffer | string): Promise<any> {
     const session = await getSessionStorage(sessionId);
     if (!session) {
       throw new NotFoundError(`Session not found: ${sessionId}`);
@@ -19,7 +19,7 @@ export class HarnessService {
     const mockedActions: string[] = [];
 
     // 1. Transcribe the audio
-    const transcription = await asrClient.transcribe(audioFilePath, session.language);
+    const transcription = await asrClient.transcribe(audioData, session.language);
     
     // 2. Fetch Active Catalog (read-only from production db)
     const catalog = await this.fetchActiveCatalog();

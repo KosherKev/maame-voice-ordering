@@ -41,7 +41,7 @@
                 <option value="en">English</option>
             </select>
             <button id="start-btn">Start Session</button>
-            <button id="record-btn" disabled>Hold to Talk</button>
+            <button id="record-btn" disabled>Click to Talk</button>
         </div>
         <div id="session-info" class="status">No active session</div>
         <div id="status-text" class="status"></div>
@@ -56,6 +56,7 @@
         let sessionId = null;
         let mediaRecorder = null;
         let audioChunks = [];
+        let isRecording = false;
 
         const startBtn = document.getElementById('start-btn');
         const recordBtn = document.getElementById('record-btn');
@@ -84,7 +85,7 @@
                 startBtn.textContent = 'Restart Session';
                 startBtn.disabled = false;
                 historyDiv.innerHTML = '';
-                statusText.textContent = 'Ready. Press and hold "Hold to Talk".';
+                statusText.textContent = 'Ready. Press "Click to Talk" when you want to speak.';
             } catch (err) {
                 statusText.textContent = 'Failed to start session.';
                 startBtn.disabled = false;
@@ -107,26 +108,29 @@
             };
         }
 
-        recordBtn.addEventListener('mousedown', () => {
-            if (!mediaRecorder || mediaRecorder.state === 'recording') return;
-            audioChunks = [];
-            mediaRecorder.start();
-            recordBtn.classList.add('recording');
-            recordBtn.textContent = 'Recording...';
-            statusText.textContent = 'Listening...';
+        recordBtn.addEventListener('click', () => {
+            if (!mediaRecorder) return;
+            
+            if (!isRecording) {
+                // Start recording
+                if (mediaRecorder.state === 'recording') return;
+                audioChunks = [];
+                mediaRecorder.start();
+                isRecording = true;
+                recordBtn.classList.add('recording');
+                recordBtn.textContent = 'Recording (Click to Stop)...';
+                statusText.textContent = 'Listening...';
+            } else {
+                // Stop recording
+                if (mediaRecorder.state === 'inactive') return;
+                mediaRecorder.stop();
+                isRecording = false;
+                recordBtn.classList.remove('recording');
+                recordBtn.textContent = 'Click to Talk';
+                recordBtn.disabled = true;
+                statusText.textContent = 'Processing...';
+            }
         });
-
-        const stopRecording = () => {
-            if (!mediaRecorder || mediaRecorder.state === 'inactive') return;
-            mediaRecorder.stop();
-            recordBtn.classList.remove('recording');
-            recordBtn.textContent = 'Hold to Talk';
-            recordBtn.disabled = true;
-            statusText.textContent = 'Processing...';
-        };
-
-        recordBtn.addEventListener('mouseup', stopRecording);
-        recordBtn.addEventListener('mouseleave', stopRecording);
 
         async function sendTurn(audioBlob) {
             const formData = new FormData();

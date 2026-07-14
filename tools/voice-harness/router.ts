@@ -47,7 +47,7 @@ voiceHarnessRouter.post('/sessions/:sessionId/turns', upload.single('audio'), as
     }
 
     // Process the turn using harnessService
-    const turnResponse = await harnessService.processTurn(sessionId, file.path);
+    const turnResponse = await harnessService.processTurn(sessionId, file.buffer);
     res.status(200).json(turnResponse);
   } catch (err) {
     next(err);
