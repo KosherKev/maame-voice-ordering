@@ -241,12 +241,16 @@ Response **must** be `application/json`:
 - Developer portal: `https://translation.ghananlp.org` (Azure API Management). Auth header: `Ocp-Apim-Subscription-Key: <key>`.
 - Plan: Standard tier, $89.95/month, 20,000 requests/month, one request = one call regardless of audio duration (confirmed directly with GhanaNLP).
 
+#### Language code inconsistency between the two APIs — confirmed by live testing, 2026-07-14
+
+**ASR v3 and TTS v2 do not use the same language code format.** ASR v3 takes 2-letter codes (`tw`, `en`). TTS v2 takes ISO 639-3 codes (`twi`, `eng`). This is a real quirk of Khaya's API, not a bug in either endpoint. The internal standard across this codebase is `tw`/`en` everywhere (matching ASR's format, and what `LlmClient` and the order state machine use) — `KhayaTtsClient` is the *only* place a translation happens, silently mapping `tw → twi` (etc.) immediately before calling TTS. No other module should ever see or produce a `twi`/`eng`-style code; if you find one, it belongs in `KhayaTtsClient`'s mapping table, not scattered elsewhere.
+
 #### ASR v3 — ✅ G-8 Resolved (confirmed from live portal, 2026-07-14)
 
-- **GET** `https://translation-api.ghananlp.org/asr/v3/languages` — returns `{ languages: [{ code: string, name: string }] }`. Language codes are ISO 639-3 (e.g. `"twi"` for Twi, `"ewe"` for Ewe).
+- **GET** `https://translation-api.ghananlp.org/asr/v3/languages` — returns `{ languages: [{ code: string, name: string }] }`. Language codes here are **2-letter** (e.g. `"tw"` for Twi, `"en"` for English) — this is the format the rest of the codebase standardizes on.
 - **POST** `https://translation-api.ghananlp.org/asr/v3/transcribe?language={code}[&timestamps=word|segment]`
   - **Request body**: raw audio bytes (not multipart/form-data). `Content-Type` must be one of `audio/mpeg`, `audio/wav`, `audio/flac`, `audio/ogg`.
-  - **language** is a **URL template/query parameter**, not a form field.
+  - **language** is a **URL template/query parameter**, not a form field, and is 2-letter (`tw`, `en`) — not ISO 639-3.
   - **Response 200**: `{ "text": "transcribed text" }` (with optional `timings` object when `timestamps` param is set).
   - **Response 400**: `{ error: { code: "VALIDATION_FAILED", message: string, details: [{ code: "EMPTY_AUDIO" | "UNSUPPORTED_LANGUAGE" | "INVALID_AUDIO_FORMAT" | "INVALID_TIMESTAMPS" | "UNSUPPORTED_TIMESTAMPS", target: string, message: string }] } }`
   - **Response 500**: `{ error: { code: "SYSTEM_ERROR", message: string, details: [] } }`
@@ -254,9 +258,9 @@ Response **must** be `application/json`:
 #### TTS v2 — ✅ G-8 Resolved (confirmed from live portal, 2026-07-14)
 
 - **GET** `https://translation-api.ghananlp.org/tts/v2/speakers` — returns available speaker IDs (e.g. `male_low`, `male_high`, `female`).
-- **GET** `https://translation-api.ghananlp.org/tts/v2/languages` — returns supported language codes (e.g. `"twi"`).
+- **GET** `https://translation-api.ghananlp.org/tts/v2/languages` — returns supported language codes as **ISO 639-3** (e.g. `"twi"`, not `"tw"`).
 - **POST** `https://translation-api.ghananlp.org/tts/v2/synthesize`
-  - **Request body (JSON)**: `{ "text": string, "language": string, "speaker_id"?: string, "stream"?: boolean, "format"?: "wav" | "mp3" | "ogg" }`
+  - **Request body (JSON)**: `{ "text": string, "language": string, "speaker_id"?: string, "stream"?: boolean, "format"?: "wav" | "mp3" | "ogg" }` — `language` here is ISO 639-3 (`"twi"`, `"eng"`), produced by `KhayaTtsClient`'s internal `tw → twi` mapping, never passed in directly as `tw`.
   - **Response 200**: Raw audio bytes matching the requested `format`.
   - **Response 400**: `{ error: { code: "VALIDATION_FAILED", message: string, details: [{ code: "EMPTY_TEXT" | "MISSING_LANGUAGE" | "UNSUPPORTED_LANGUAGE" | "INVALID_SPEAKER" | "INVALID_REQUEST", target: string, message: string }] } }`
   - **Response 500**: `{ error: { code: "SYSTEM_ERROR", message: string, details: [] } }`
@@ -273,6 +277,10 @@ Not a public endpoint — called internally by the voice/USSD webhook handler be
 }
 ```
 Provider selected via `LLM_PROVIDER` env var (`claude` | `gemini`). Claude via Anthropic API (`model: claude-haiku-4-5`), Gemini via Google AI Studio API (`model: gemini-2.5-flash-lite`). Both called with the same system prompt (catalog + conversation state) and required to return the same JSON schema — implemented via each provider's structured-output/tool-calling feature, not free-text parsing.
+
+**Prompt context must include a pre-computed running total.** Both providers were unreliable at basket arithmetic (getting "how much would that be?" wrong) when left to sum item prices themselves. The backend calculates the running total in pesewas — including the flat service fee — on every turn, before calling `LlmClient`, and injects it into the prompt context as a plain number the model reads rather than computes. `LlmClient`'s input is therefore not just the transcript; it's `{ transcript, basketState, runningTotalInPesewas, conversationHistory }`.
+
+**`clarifyingQuestion` doubles as conversational confirmation, not just disambiguation.** For `add_item`/`remove_item` intents, the system prompt instructs the model to use this field for a natural confirmation ("I've added kenkey to your order — anything else?") even when there's nothing genuinely ambiguous to ask about. Treat it as "what Maame says next," not strictly "a question asked only when confused."
 
 ### 7.4 Moolre (SMS, USSD, Collections, Transfer)
 

@@ -29,9 +29,12 @@ Rules:
    - If a vendor is locked, and the customer tries to add items belonging to a DIFFERENT vendor, you MUST set intent to 'ask_clarification' and clarifyingQuestion to explain they can only order from the currently locked vendor (provide the vendor name).
    - If no vendor is locked, the first item added locks the order to that item's vendor.
 4. When intent is 'confirm_order', summarize the final order items, quantities, and total cost in Cedis in 'orderSummaryText' (e.g. "You ordered 1 portion of Waakye with egg. The total is 18 Cedis. Would you like to confirm this order?").
-5. Provide a clarifyingQuestion when intent is 'ask_clarification' or when you need details (e.g. "Do you want to add fish, egg, or beef to your Waakye?").`;
+5. Provide a conversational response in 'clarifyingQuestion' when intent is 'add_item', 'remove_item', or 'ask_clarification'. (e.g. "I've added Kenkey to your order. Would you like anything else?" or "Do you want fish or egg with that?").`;
 
-      const promptContext = `Current Basket State:
+      const basketTotalPesewas = currentBasket.reduce((sum, item) => sum + (item.quantity * item.unitPriceInPesewas), 0);
+      const basketTotalCedis = (basketTotalPesewas / 100) + 8; // 8 Cedis delivery fee
+
+      const promptContext = `Current Basket State (Total including 8 GHS delivery: ${basketTotalCedis} GHS):
 ${JSON.stringify(currentBasket, null, 2)}
 
 Conversation Turn History:
